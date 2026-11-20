@@ -152,18 +152,16 @@ commit_sha="$(git -C "$repo_root" rev-parse --short HEAD 2>/dev/null || git -C "
 built_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
 if [ -z "$version" ]; then
-	base_ver="$(git -C "$repo_root" describe --tags --abbrev=0 2>/dev/null || echo 'v0.1.0')"
-	case "$base_ver" in
-	*insights*)
-		version="$base_ver"
-		;;
-	*+*)
-		version="${base_ver}.insights"
-		;;
-	*)
-		version="${base_ver}+insights.${commit_sha}"
-		;;
-	esac
+	upstream_ver=''
+	if [ -f "${repo_root}/UPSTREAM_REF" ]; then
+		upstream_ver="$(sed -n 's/^UPSTREAM_VERSION=//p' "${repo_root}/UPSTREAM_REF" | head -n 1)"
+	fi
+	if [ -z "$upstream_ver" ]; then
+		upstream_ver='v1.0.0'
+	fi
+	rel_part="$(git -C "$repo_root" describe --tags --abbrev=0 2>/dev/null || echo 'dev')"
+	rel_part="${rel_part#v}"
+	version="${upstream_ver}+insights.${rel_part}.${commit_sha}"
 fi
 
 mkdir -p "$out_dir" "${out_dir}/docker"

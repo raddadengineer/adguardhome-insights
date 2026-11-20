@@ -162,6 +162,8 @@ sh "$installer" install \
 	--no-service
 [ -L "$cli_bin" ]
 "${install_dir}/AdGuardHome" --version | grep -qi 'insights'
+"${install_dir}/AdGuardHome" -v --version | grep -q 'v1.0.0+insights\.'
+"${install_dir}/AdGuardHome" -v --version | grep -q 'Channel: development'
 "${install_dir}/AdGuardHome.stock.bak" --version | grep -q 'v0.107.57'
 sh "$installer" status --dir "$install_dir" --no-service --strict >/dev/null
 

@@ -10,7 +10,7 @@ services:
       context: ..
       dockerfile: packaging/Dockerfile
       args:
-        VERSION: v0.1.0+insights.local
+        VERSION: v1.0.0+insights.local
     cap_drop:
       - ALL
     cap_add:

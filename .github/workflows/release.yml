@@ -117,7 +117,12 @@ jobs:
             fi
           fi
           short_sha="$(git rev-parse --short HEAD)"
-          insights_ver="${rel_tag}+insights.${short_sha}"
+          upstream_ver="$(sed -n 's/^UPSTREAM_VERSION=//p' UPSTREAM_REF | head -n 1)"
+          if [ -z "$upstream_ver" ]; then
+            upstream_ver="v1.0.0"
+          fi
+          rel_num="${rel_tag#v}"
+          insights_ver="${upstream_ver}+insights.${rel_num}.${short_sha}"
           owner_lc="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
           {
             echo "tag=${rel_tag}"
@@ -133,7 +138,7 @@ jobs:
             --work-dir .work/AdGuardHome \
             --targets "linux/386 linux/amd64 linux/arm64 linux/armv6 linux/armv7 darwin/amd64 darwin/arm64" \
             --version "${{ steps.meta.outputs.version }}" \
-            --channel release \
+            --channel development \
             --out-dir dist/insights
 
       - name: Publish GitHub Release

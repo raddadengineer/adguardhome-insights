@@ -37,14 +37,16 @@ Optional flags:
 
 ### Re-installing After Upstream AdGuard Home Upgrades & Rolling Back
 
+Insights binaries are built on the `development` update channel so AdGuard Home's in-UI upstream updater is intentionally disabled and won't nag or accidentally overwrite your Insights overlay with a stock build. To update Insights, use `adguardhome-insights reinstall` (or `docker compose ... pull && up -d`):
+
 ```sh
 # Check overlay state (INSTALLED, OVERRIDDEN_BY_UPGRADE, MODIFIED, or NOT_INSTALLED)
 adguardhome-insights status
 
-# After upgrading stock AdGuard Home, re-apply Insights (also updates AdGuardHome.stock.bak)
+# Re-apply / update Insights from GitHub using saved settings
 sudo adguardhome-insights reinstall
 
-# Revert to your backed-up stock AdGuard Home binary at any time
+# Revert to your backed-up stock AdGuard Home binary at any time (re-enabling stock UI updates)
 sudo adguardhome-insights rollback
 ```
 

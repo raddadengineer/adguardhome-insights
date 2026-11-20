@@ -28,7 +28,7 @@ FROM golang:1.27.4-alpine3.23 AS backend
 ARG TARGETOS=linux
 ARG TARGETARCH
 ARG TARGETVARIANT
-ARG VERSION=v0.1.0+insights.docker
+ARG VERSION=v1.0.0+insights.docker
 ARG CHANNEL=development
 
 WORKDIR /src
@@ -54,7 +54,7 @@ RUN set -eu; \
 FROM alpine:3.23
 
 ARG BUILD_DATE=''
-ARG VERSION=v0.1.0+insights.docker
+ARG VERSION=v1.0.0+insights.docker
 ARG VCS_REF=''
 
 LABEL \
