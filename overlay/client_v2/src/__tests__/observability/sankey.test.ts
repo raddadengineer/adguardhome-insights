@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+    MIN_FLOW_ZOOM,
+    MAX_FLOW_ZOOM,
+    DEFAULT_FLOW_VIEWPORT,
     foldFlow,
     layoutSankey,
+    clampViewport,
+    zoomViewportAt,
+    panViewport,
+    formatZoomPercent,
     formatPercent,
     formatCompactCount,
     type FlowNode,
@@ -121,5 +128,25 @@ describe('sankey layout helpers', () => {
         expect(formatCompactCount(1500)).toBe('1.5k');
         expect(formatCompactCount(25_400)).toBe('25.4k');
         expect(formatCompactCount(2_500_000)).toBe('2.5M');
+        expect(formatZoomPercent(1.25)).toBe('125%');
+    });
+
+    it('clamps, anchors zoom, and pans viewport safely', () => {
+        expect(clampViewport({ scale: 10, tx: 0, ty: 0 }, 800, 400).scale).toBe(MAX_FLOW_ZOOM);
+        expect(clampViewport({ scale: 0.1, tx: 0, ty: 0 }, 800, 400)).toEqual({
+            scale: MIN_FLOW_ZOOM,
+            tx: 200,
+            ty: 100,
+        });
+
+        const zoomed = zoomViewportAt(DEFAULT_FLOW_VIEWPORT, 2, 200, 100, 800, 400);
+        expect(zoomed).toEqual({ scale: 2, tx: -200, ty: -100 });
+
+        expect(panViewport(DEFAULT_FLOW_VIEWPORT, 50, -30, 800, 400)).toEqual(
+            DEFAULT_FLOW_VIEWPORT,
+        );
+        const panned = panViewport(zoomed, 400, 400, 800, 400);
+        expect(panned.tx).toBe(40);
+        expect(panned.ty).toBe(40);
     });
 });

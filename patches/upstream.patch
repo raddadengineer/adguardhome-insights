@@ -14,10 +14,10 @@ index 3856be1c..39853053 100644
  │   ├── lib/                       # Theme aggregation, misc utils
  │   ├── store/types.ts             # Legacy type re-exports (post-Redux)
 diff --git a/client_v2/src/__locales/en.json b/client_v2/src/__locales/en.json
-index 394b3f38..43e61ed7 100644
+index 394b3f38..d09763e9 100644
 --- a/client_v2/src/__locales/en.json
 +++ b/client_v2/src/__locales/en.json
-@@ -497,6 +497,163 @@
+@@ -497,6 +497,168 @@
    "nothing_found": "Nothing found",
    "notify_undo": "Undo",
    "notify_updated": "Updated",
@@ -178,6 +178,11 @@ index 394b3f38..43e61ed7 100644
 +  "obs_window_6h": "6 h",
 +  "obs_window_7d": "7 d",
 +  "obs_window_90d": "90 d",
++  "obs_zoom_controls_aria": "Diagram zoom controls",
++  "obs_zoom_hint": "Pinch or Ctrl+scroll to zoom · Drag to pan",
++  "obs_zoom_in": "Zoom in",
++  "obs_zoom_out": "Zoom out",
++  "obs_zoom_reset": "Reset zoom",
    "open_dashboard": "Open dashboard",
    "out_of_range_error": "The address must not be within the DHCP range %start%–%end%",
    "parental_control": "Parental Control",

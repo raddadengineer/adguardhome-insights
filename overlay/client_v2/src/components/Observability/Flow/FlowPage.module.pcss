@@ -306,10 +306,106 @@
     letter-spacing: 0.03em;
 }
 
+.diagramTopBar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.zoomHint {
+    font-size: var(--fs-text-t4);
+    color: var(--default-description-text);
+}
+
+.zoomControls {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--default-item-divider);
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: var(--default-cards-background);
+    margin-inline-start: auto;
+}
+
+.zoomBtn,
+.zoomReadout {
+    border: 0;
+    background: transparent;
+    color: var(--default-main-text);
+    padding: 4px 10px;
+    font-size: var(--fs-text-t4);
+    font-weight: var(--weight-medium);
+    cursor: pointer;
+
+    &:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+
+    @media (hover: hover) {
+        &:hover:not(:disabled) {
+            background-color: var(--hovered-page-background);
+        }
+    }
+}
+
+.zoomBtn {
+    min-width: 28px;
+}
+
+.zoomReadout {
+    min-width: 52px;
+    border-inline: 1px solid var(--default-item-divider);
+    font-variant-numeric: tabular-nums;
+}
+
+.stageHeadersZoomed {
+    position: relative;
+    height: 24px;
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+
+.stageHeaderPinned {
+    position: absolute;
+    top: 0;
+    font-size: var(--fs-text-t4);
+    font-weight: var(--weight-semi-bold);
+    color: var(--default-description-text);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+}
+
 .svgContainer {
     position: relative;
     width: 100%;
-    overflow-x: auto;
+}
+
+.svgViewport {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    touch-action: pan-y;
+    outline: none;
+    border-radius: 6px;
+
+    &:focus-visible {
+        box-shadow: 0 0 0 2px var(--default-focus-outline);
+    }
+}
+
+.svgPannable {
+    cursor: grab;
+    touch-action: none;
+}
+
+.svgPanning {
+    cursor: grabbing;
+    user-select: none;
 }
 
 .svg {

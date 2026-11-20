@@ -333,6 +333,37 @@ describe('Observability pages', () => {
         });
     });
 
+    it('zooms in, zooms out, handles Ctrl+wheel, and resets Query Flow diagram zoom', () => {
+        renderWithRouter(() => <FlowPage />, '/flow');
+
+        const readout = screen.getByTestId('flow-zoom-level');
+        expect(readout).toHaveTextContent('100%');
+
+        const zoomInBtn = screen.getByRole('button', { name: copyInDom('obs_zoom_in') });
+        const zoomOutBtn = screen.getByRole('button', { name: copyInDom('obs_zoom_out') });
+        const resetBtn = screen.getByRole('button', { name: copyInDom('obs_zoom_reset') });
+        expect(resetBtn).toBeDisabled();
+
+        fireEvent.click(zoomInBtn);
+        expect(screen.getByTestId('flow-zoom-level')).toHaveTextContent('125%');
+        expect(screen.getByTestId('flow-zoom-group').getAttribute('transform')).toContain(
+            'scale(1.25)',
+        );
+        expect(resetBtn).not.toBeDisabled();
+
+        fireEvent.click(zoomOutBtn);
+        fireEvent.click(zoomOutBtn);
+        expect(screen.getByTestId('flow-zoom-level')).toHaveTextContent('80%');
+
+        const viewport = screen.getByTestId('flow-svg-viewport');
+        fireEvent.wheel(viewport, { deltaY: -100, ctrlKey: true });
+        expect(screen.getByTestId('flow-zoom-level').textContent).not.toBe('80%');
+
+        fireEvent.click(resetBtn);
+        expect(screen.getByTestId('flow-zoom-level')).toHaveTextContent('100%');
+        expect(resetBtn).toBeDisabled();
+    });
+
     it('renders TrafficMapPage service tiles and toggles table view', () => {
         renderWithRouter(() => <TrafficMapPage />, '/traffic_map');
         expect(

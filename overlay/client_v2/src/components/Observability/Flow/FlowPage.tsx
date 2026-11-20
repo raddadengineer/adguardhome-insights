@@ -47,10 +47,19 @@ import type { StatsFlowParams } from 'panel/api/model/statsFlowParams';
 import type { StatsFlowDetailsParams } from 'panel/api/model/statsFlowDetailsParams';
 import {
     STAGES,
+    MIN_FLOW_ZOOM,
+    MAX_FLOW_ZOOM,
+    FLOW_ZOOM_STEP,
+    DEFAULT_FLOW_VIEWPORT,
     foldFlow,
     layoutSankey,
+    clampViewport,
+    zoomViewportAt,
+    panViewport,
+    formatZoomPercent,
     formatPercent,
     formatCompactCount,
+    type FlowViewport,
     type PlacedNode,
     type PlacedLink,
 } from 'panel/helpers/observability/sankey';
@@ -198,11 +207,16 @@ export const FlowPage = () => {
     const [drillSearch, setDrillSearch] = createSignal('');
     const [busyActionKey, setBusyActionKey] = createSignal<string | null>(null);
     const [diagramWidth, setDiagramWidth] = createSignal(780);
+    const [viewport, setViewport] = createSignal<FlowViewport>(DEFAULT_FLOW_VIEWPORT);
+    const [isPanning, setIsPanning] = createSignal(false);
     const [hoverNodeId, setHoverNodeId] = createSignal<string | null>(null);
     const [hoverLink, setHoverLink] = createSignal<PlacedLink | null>(null);
     const [tipPos, setTipPos] = createSignal<{ x: number; y: number } | null>(null);
 
     let wrapEl: HTMLDivElement | undefined;
+    let svgViewportEl: HTMLDivElement | undefined;
+    let dragState: { startX: number; startY: number; origin: FlowViewport } | null = null;
+    let suppressNextClick = false;
     let observer: ResizeObserver | undefined;
 
     createEffect(() => {
@@ -406,6 +420,12 @@ export const FlowPage = () => {
         return Math.max(360, Math.min(720, maxRows * 34));
     });
 
+    const svgWidth = createMemo(() => Math.max(240, diagramWidth()));
+    const zoomScale = createMemo(() => Math.max(1, viewport().scale));
+    const isDefaultViewport = createMemo(
+        () => viewport().scale === 1 && viewport().tx === 0 && viewport().ty === 0,
+    );
+
     const sankey = createMemo(() => {
         const f = folded();
         const w = diagramWidth();
@@ -424,6 +444,166 @@ export const FlowPage = () => {
             activeStages(),
         );
     });
+
+    createEffect(() => {
+        win();
+        groupBy();
+        viewLens();
+        flowFilter();
+        showTable();
+        setViewport(DEFAULT_FLOW_VIEWPORT);
+        setIsPanning(false);
+        dragState = null;
+    });
+
+    createEffect(() => {
+        const w = svgWidth();
+        const h = diagramHeight();
+        setViewport((prev) => clampViewport(prev, w, h));
+    });
+
+    const zoomBy = (factor: number) => {
+        const w = svgWidth();
+        const h = diagramHeight();
+        setViewport((prev) =>
+            zoomViewportAt(prev, prev.scale * factor, w / 2, h / 2, w, h),
+        );
+    };
+
+    const resetZoom = () => {
+        setViewport(DEFAULT_FLOW_VIEWPORT);
+        setIsPanning(false);
+        dragState = null;
+    };
+
+    const handleWheel = (e: WheelEvent) => {
+        if (!e.ctrlKey && !e.metaKey) {
+            return;
+        }
+        if (e.cancelable) {
+            e.preventDefault();
+        }
+        const w = svgWidth();
+        const h = diagramHeight();
+        const rect = svgViewportEl?.getBoundingClientRect();
+        const anchorX = rect && rect.width > 0 ? e.clientX - rect.left : w / 2;
+        const anchorY = rect && rect.height > 0 ? e.clientY - rect.top : h / 2;
+        const rawFactor = Math.exp(-e.deltaY * 0.008);
+        const factor = Math.max(0.65, Math.min(1.5, rawFactor));
+
+        setViewport((prev) =>
+            zoomViewportAt(prev, prev.scale * factor, anchorX, anchorY, w, h),
+        );
+    };
+
+    const handlePointerDown = (e: PointerEvent) => {
+        if (e.button !== 0 || viewport().scale <= 1) {
+            return;
+        }
+        dragState = {
+            startX: e.clientX,
+            startY: e.clientY,
+            origin: viewport(),
+        };
+        suppressNextClick = false;
+        const target = e.currentTarget as HTMLElement | null;
+        if (target?.setPointerCapture) {
+            try {
+                target.setPointerCapture(e.pointerId);
+            } catch {
+                // Ignore synthetic pointer ids in unit tests.
+            }
+        }
+    };
+
+    const handlePointerMove = (e: PointerEvent) => {
+        if (!dragState) {
+            return;
+        }
+        const dx = e.clientX - dragState.startX;
+        const dy = e.clientY - dragState.startY;
+        if (Math.hypot(dx, dy) > 4) {
+            suppressNextClick = true;
+            setIsPanning(true);
+            setTipPos(null);
+        }
+        if (suppressNextClick) {
+            setViewport(panViewport(dragState.origin, dx, dy, svgWidth(), diagramHeight()));
+        }
+    };
+
+    const handlePointerEnd = (e: PointerEvent) => {
+        if (!dragState) {
+            return;
+        }
+        dragState = null;
+        setIsPanning(false);
+        const target = e.currentTarget as HTMLElement | null;
+        if (target?.releasePointerCapture) {
+            try {
+                target.releasePointerCapture(e.pointerId);
+            } catch {
+                // Ignore if pointer capture is not active.
+            }
+        }
+    };
+
+    const handleViewportKeyDown = (e: KeyboardEvent) => {
+        if (e.target !== svgViewportEl) {
+            return;
+        }
+        const step = 48;
+        switch (e.key) {
+            case '+':
+            case '=':
+                e.preventDefault();
+                zoomBy(FLOW_ZOOM_STEP);
+                break;
+            case '-':
+            case '_':
+                e.preventDefault();
+                zoomBy(1 / FLOW_ZOOM_STEP);
+                break;
+            case '0':
+                e.preventDefault();
+                resetZoom();
+                break;
+            case 'ArrowLeft':
+                if (viewport().scale > 1) {
+                    e.preventDefault();
+                    setViewport((prev) =>
+                        panViewport(prev, step, 0, svgWidth(), diagramHeight()),
+                    );
+                }
+                break;
+            case 'ArrowRight':
+                if (viewport().scale > 1) {
+                    e.preventDefault();
+                    setViewport((prev) =>
+                        panViewport(prev, -step, 0, svgWidth(), diagramHeight()),
+                    );
+                }
+                break;
+            case 'ArrowUp':
+                if (viewport().scale > 1) {
+                    e.preventDefault();
+                    setViewport((prev) =>
+                        panViewport(prev, 0, step, svgWidth(), diagramHeight()),
+                    );
+                }
+                break;
+            case 'ArrowDown':
+                if (viewport().scale > 1) {
+                    e.preventDefault();
+                    setViewport((prev) =>
+                        panViewport(prev, 0, -step, svgWidth(), diagramHeight()),
+                    );
+                }
+                break;
+            default:
+                break;
+        }
+    };
 
     const nodeById = createMemo(() => {
         const map = new Map<string, PlacedNode>();
@@ -565,6 +745,10 @@ export const FlowPage = () => {
     };
 
     const drillNode = (node: PlacedNode) => {
+        if (suppressNextClick) {
+            suppressNextClick = false;
+            return;
+        }
         const patch = nodeFilterPatch(node, groupBy());
         if (!patch) {
             return;
@@ -573,6 +757,10 @@ export const FlowPage = () => {
     };
 
     const drillLink = (link: Pick<PlacedLink, 'source' | 'target'>) => {
+        if (suppressNextClick) {
+            suppressNextClick = false;
+            return;
+        }
         const src = nodeById().get(link.source);
         const dst = nodeById().get(link.target);
         if (!src || !dst) {
@@ -1174,24 +1362,130 @@ export const FlowPage = () => {
                                     </div>
                                 }
                             >
-                                <Show when={!isVertical()}>
-                                    <div class={s.stageHeaders}>
-                                        <For each={activeStages()}>
-                                            {(st) => (
-                                                <span class={s.stageHeader}>{stageLabel(st)}</span>
-                                            )}
-                                        </For>
+                                <div class={s.diagramTopBar}>
+                                    <span class={s.zoomHint}>
+                                        {intl.getMessage('obs_zoom_hint')}
+                                    </span>
+                                    <div
+                                        class={s.zoomControls}
+                                        role="group"
+                                        aria-label={intl.getMessage('obs_zoom_controls_aria')}
+                                    >
+                                        <button
+                                            type="button"
+                                            class={s.zoomBtn}
+                                            aria-label={intl.getMessage('obs_zoom_out')}
+                                            disabled={viewport().scale <= MIN_FLOW_ZOOM}
+                                            onClick={() => zoomBy(1 / FLOW_ZOOM_STEP)}
+                                        >
+                                            −
+                                        </button>
+                                        <span class={s.zoomReadout} data-testid="flow-zoom-level">
+                                            {formatZoomPercent(viewport().scale)}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            class={s.zoomBtn}
+                                            aria-label={intl.getMessage('obs_zoom_in')}
+                                            disabled={viewport().scale >= MAX_FLOW_ZOOM}
+                                            onClick={() => zoomBy(FLOW_ZOOM_STEP)}
+                                        >
+                                            +
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class={s.zoomBtn}
+                                            disabled={isDefaultViewport()}
+                                            onClick={resetZoom}
+                                        >
+                                            {intl.getMessage('obs_zoom_reset')}
+                                        </button>
                                     </div>
+                                </div>
+
+                                <Show when={!isVertical()}>
+                                    <Show
+                                        when={isDefaultViewport()}
+                                        fallback={
+                                            <div class={s.stageHeadersZoomed}>
+                                                <For each={activeStages()}>
+                                                    {(st, i) => {
+                                                        const count = () => activeStages().length;
+                                                        const padX = 8;
+                                                        const nodeW = 14;
+                                                        const along = () => Math.max(240, svgWidth() - padX * 2);
+                                                        const step = () =>
+                                                            count() > 1 ? (along() - nodeW) / (count() - 1) : 0;
+                                                        const leftPx = () => {
+                                                            const vp = viewport();
+                                                            const idx = i();
+                                                            const baseX =
+                                                                idx === 0
+                                                                    ? padX
+                                                                    : idx === count() - 1
+                                                                      ? padX + idx * step() + nodeW
+                                                                      : padX + idx * step() + nodeW / 2;
+                                                            return baseX * vp.scale + vp.tx;
+                                                        };
+                                                        const txPct = () => {
+                                                            const idx = i();
+                                                            if (idx === 0) return '0%';
+                                                            if (idx === count() - 1) return '-100%';
+                                                            return '-50%';
+                                                        };
+
+                                                        return (
+                                                            <span
+                                                                class={s.stageHeaderPinned}
+                                                                style={{
+                                                                    left: `${leftPx()}px`,
+                                                                    transform: `translateX(${txPct()})`,
+                                                                }}
+                                                            >
+                                                                {stageLabel(st)}
+                                                            </span>
+                                                        );
+                                                    }}
+                                                </For>
+                                            </div>
+                                        }
+                                    >
+                                        <div class={s.stageHeaders}>
+                                            <For each={activeStages()}>
+                                                {(st) => (
+                                                    <span class={s.stageHeader}>{stageLabel(st)}</span>
+                                                )}
+                                            </For>
+                                        </div>
+                                    </Show>
                                 </Show>
 
                                 <div class={s.svgContainer}>
-                                    <svg
-                                        width="100%"
-                                        height={diagramHeight()}
-                                        viewBox={`0 0 ${Math.max(240, diagramWidth())} ${diagramHeight()}`}
-                                        class={s.svg}
+                                    <div
+                                        ref={svgViewportEl}
+                                        class={cn(s.svgViewport, {
+                                            [s.svgPannable]: viewport().scale > 1,
+                                            [s.svgPanning]: isPanning(),
+                                        })}
+                                        tabIndex={0}
+                                        data-testid="flow-svg-viewport"
+                                        onWheel={handleWheel}
+                                        onPointerDown={handlePointerDown}
+                                        onPointerMove={handlePointerMove}
+                                        onPointerUp={handlePointerEnd}
+                                        onPointerCancel={handlePointerEnd}
+                                        onKeyDown={handleViewportKeyDown}
                                     >
-                                        <g transform={isVertical() ? 'translate(4, 12)' : 'translate(8, 6)'}>
+                                        <svg
+                                            width="100%"
+                                            height={diagramHeight()}
+                                            viewBox={`0 0 ${svgWidth()} ${diagramHeight()}`}
+                                            class={s.svg}
+                                        >
+                                            <g
+                                                data-testid="flow-zoom-group"
+                                                transform={`translate(${viewport().tx}, ${viewport().ty}) scale(${viewport().scale}) ${isVertical() ? 'translate(4, 12)' : 'translate(8, 6)'}`}
+                                            >
                                             <For each={sankey()?.links ?? []}>
                                                 {(link) => {
                                                     const src = () => nodeById().get(link.source);
@@ -1267,11 +1561,11 @@ export const FlowPage = () => {
                                                         isVertical()
                                                             ? node.x + node.w / 2
                                                             : isRightEdge()
-                                                              ? node.x - 6
-                                                              : node.x + node.w + 6;
+                                                              ? node.x - 6 / zoomScale()
+                                                              : node.x + node.w + 6 / zoomScale();
                                                     const labelY = () =>
                                                         isVertical()
-                                                            ? node.y + node.h + 12
+                                                            ? node.y + node.h + 12 / zoomScale()
                                                             : node.y + node.h / 2;
                                                     const anchor = () =>
                                                         isVertical()
@@ -1280,7 +1574,9 @@ export const FlowPage = () => {
                                                               ? 'end'
                                                               : 'start';
                                                     const showLabel = () =>
-                                                        isVertical() ? node.w >= 40 : node.h >= 14;
+                                                        isVertical()
+                                                            ? node.w * viewport().scale >= 40
+                                                            : node.h * viewport().scale >= 14;
                                                     const selected = () =>
                                                         isNodeSelected(flowFilter(), node, groupBy());
 
@@ -1329,6 +1625,7 @@ export const FlowPage = () => {
                                                                     y={labelY()}
                                                                     text-anchor={anchor()}
                                                                     dominant-baseline="middle"
+                                                                    font-size={`${12 / zoomScale()}px`}
                                                                     class={s.nodeLabel}
                                                                 >
                                                                     {node.label} (
@@ -1341,6 +1638,7 @@ export const FlowPage = () => {
                                             </For>
                                         </g>
                                     </svg>
+                                </div>
 
                                     <Show when={tooltipText() && tipPos()}>
                                         <div

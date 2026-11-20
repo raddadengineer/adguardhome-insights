@@ -325,6 +325,121 @@ export function layoutSankey(
     };
 }
 
+export const MIN_FLOW_ZOOM = 0.5;
+export const MAX_FLOW_ZOOM = 4;
+export const FLOW_ZOOM_STEP = 1.25;
+
+export type FlowViewport = {
+    scale: number;
+    tx: number;
+    ty: number;
+};
+
+export const DEFAULT_FLOW_VIEWPORT: FlowViewport = {
+    scale: 1,
+    tx: 0,
+    ty: 0,
+};
+
+function clampZoomScale(rawScale: number): number {
+    if (!Number.isFinite(rawScale)) {
+        return 1;
+    }
+    const clamped = Math.max(MIN_FLOW_ZOOM, Math.min(MAX_FLOW_ZOOM, rawScale));
+    const rounded = Math.round(clamped * 10_000) / 10_000;
+    return Math.abs(rounded - 1) < 0.005 ? 1 : rounded;
+}
+
+/**
+ * Clamps scale to [0.5, 4] and keeps the diagram centered at <=100% or within
+ * bounded pan margins when zoomed in.
+ */
+export function clampViewport(
+    vp: FlowViewport,
+    width: number,
+    height: number,
+): FlowViewport {
+    const scale = clampZoomScale(vp.scale);
+    const safeW = Math.max(1, width);
+    const safeH = Math.max(1, height);
+
+    if (scale === 1) {
+        return DEFAULT_FLOW_VIEWPORT;
+    }
+    if (scale < 1) {
+        return {
+            scale,
+            tx: (safeW * (1 - scale)) / 2,
+            ty: (safeH * (1 - scale)) / 2,
+        };
+    }
+
+    const pad = 40;
+    const minX = safeW * (1 - scale) - pad;
+    const minY = safeH * (1 - scale) - pad;
+    return {
+        scale,
+        tx: Math.max(minX, Math.min(pad, vp.tx)),
+        ty: Math.max(minY, Math.min(pad, vp.ty)),
+    };
+}
+
+/**
+ * Zooms the viewport while keeping the diagram point under `(anchorX, anchorY)`
+ * anchored in screen space.
+ */
+export function zoomViewportAt(
+    vp: FlowViewport,
+    nextScale: number,
+    anchorX: number,
+    anchorY: number,
+    width: number,
+    height: number,
+): FlowViewport {
+    const curScale = vp.scale > 0 ? vp.scale : 1;
+    const targetScale = clampZoomScale(nextScale);
+    const worldX = (anchorX - vp.tx) / curScale;
+    const worldY = (anchorY - vp.ty) / curScale;
+
+    return clampViewport(
+        {
+            scale: targetScale,
+            tx: anchorX - worldX * targetScale,
+            ty: anchorY - worldY * targetScale,
+        },
+        width,
+        height,
+    );
+}
+
+/**
+ * Translates a zoomed-in viewport by `(dx, dy)` within clamped pan bounds.
+ */
+export function panViewport(
+    vp: FlowViewport,
+    dx: number,
+    dy: number,
+    width: number,
+    height: number,
+): FlowViewport {
+    if (vp.scale <= 1) {
+        return clampViewport(vp, width, height);
+    }
+    return clampViewport(
+        {
+            scale: vp.scale,
+            tx: vp.tx + dx,
+            ty: vp.ty + dy,
+        },
+        width,
+        height,
+    );
+}
+
+export function formatZoomPercent(scale: number): string {
+    return `${Math.round(scale * 100)}%`;
+}
+
 export function formatPercent(part: number, total: number): string {
     if (total <= 0 || part <= 0) {
         return '0%';
