@@ -1,6 +1,5 @@
 # AdGuard Home Insights
-
-TelltaleDNS-inspired **Multi-Level Query Flow (Sankey + Hierarchy Tree)**, **Traffic Map (Treemap)**, and **Activity & Latency Heatmaps (with Exemplars)** packaged as an installable, re-applyable overlay for existing **AdGuard Home** installations.
+**Multi-Level Query Flow (Sankey + Hierarchy Tree)**, **Traffic Map (Treemap)**, and **Activity & Latency Heatmaps (with Exemplars)** packaged as an installable, re-applyable overlay for existing **AdGuard Home** installations.
 
 Your existing `AdGuardHome.yaml`, query logs, filter lists, and `stats.db` stay intact — `stats.db` additions in Insights are backwards- and forwards-compatible with stock AdGuard Home.
 
