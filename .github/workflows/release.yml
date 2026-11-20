@@ -1,0 +1,174 @@
+name: Verify & Release Insights
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag label for manual builds
+        required: false
+        default: v0.1.0-dev
+        type: string
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify Go, Frontend & Overlay Installer
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Prepare upstream AdGuardHome source with Insights overlay
+        run: sh ./scripts/prepare-src.sh --out .work/AdGuardHome
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: .work/AdGuardHome/client_v2/package-lock.json
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: .work/AdGuardHome/go.mod
+          cache: true
+          cache-dependency-path: .work/AdGuardHome/go.sum
+
+      - name: Run Go tests and vet
+        working-directory: .work/AdGuardHome
+        run: |
+          go test -race -count=1 ./internal/filtering/... ./internal/querylog/... ./internal/stats/... ./internal/dnsforward/... ./internal/home/...
+          go vet ./...
+
+      - name: Run client_v2 checks and production build
+        working-directory: .work/AdGuardHome/client_v2
+        run: |
+          npm ci --quiet --no-progress
+          npm run check
+          npm run translations:check
+          npm run build-prod
+
+      - name: Run overlay installer E2E test
+        run: sh ./scripts/test-insights-installer.sh --work-dir .work/AdGuardHome
+
+  release:
+    name: Build Multi-Arch Bundles & Publish Images
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare upstream AdGuardHome source with Insights overlay
+        run: sh ./scripts/prepare-src.sh --out .work/AdGuardHome
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: .work/AdGuardHome/client_v2/package-lock.json
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: .work/AdGuardHome/go.mod
+          cache: true
+          cache-dependency-path: .work/AdGuardHome/go.sum
+
+      - name: Derive release metadata
+        id: meta
+        run: |
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            rel_tag="${GITHUB_REF_NAME}"
+          else
+            rel_tag="${{ inputs.tag }}"
+            if [ -z "$rel_tag" ]; then
+              rel_tag="v0.1.0-dev"
+            fi
+          fi
+          short_sha="$(git rev-parse --short HEAD)"
+          insights_ver="${rel_tag}+insights.${short_sha}"
+          owner_lc="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          {
+            echo "tag=${rel_tag}"
+            echo "version=${insights_ver}"
+            echo "owner_lc=${owner_lc}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install frontend dependencies and build multi-arch bundles
+        run: |
+          npm --prefix .work/AdGuardHome/client_v2 ci --quiet --no-progress
+          sh ./scripts/build-insights-bundle.sh \
+            --skip-prepare \
+            --work-dir .work/AdGuardHome \
+            --targets "linux/386 linux/amd64 linux/arm64 linux/armv6 linux/armv7 darwin/amd64 darwin/arm64" \
+            --version "${{ steps.meta.outputs.version }}" \
+            --channel release \
+            --out-dir dist/insights
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/insights/AdGuardHome-insights_*.tar.gz
+            dist/insights/adguardhome-insights.sh
+            dist/insights/docker-compose.insights.yml
+            dist/insights/checksums.txt
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push multi-arch Insights container image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packaging/Dockerfile.prebuilt
+          platforms: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64
+          push: true
+          build-args: DIST_DIR=dist/insights
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          tags: |
+            ghcr.io/${{ steps.meta.outputs.owner_lc }}/adguardhome-insights/adguardhome:${{ steps.meta.outputs.tag }}
+            ghcr.io/${{ steps.meta.outputs.owner_lc }}/adguardhome-insights/adguardhome:latest

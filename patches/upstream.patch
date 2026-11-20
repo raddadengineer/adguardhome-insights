@@ -1,0 +1,2680 @@
+diff --git a/client_v2/AGENTS.md b/client_v2/AGENTS.md
+index 3856be1c..39853053 100644
+--- a/client_v2/AGENTS.md
++++ b/client_v2/AGENTS.md
+@@ -93,8 +93,9 @@ client_v2/
+ │   ├── components/                # Feature/page components (Dashboard, Clients, QueryLog, …)
+ │   │   ├── App/                   # Root component — HashRouter + layout + <Route>s
+ │   │   ├── Routes/Paths.ts        # Route path constants
++│   │   ├── Observability/         # Query Flow, Traffic Map, and Heatmap pages
+ │   │   └── Stats/                 # Dashboard "Show more" detail pages (top clients, domains, upstreams)
+-│   ├── helpers/                   # Pure utilities, validators, theme helpers
++│   ├── helpers/                   # Pure utilities, validators, theme & observability (`flowDrilldown`, `sankey`, `treemap`, `heatmap`) helpers
+ │   ├── hooks/                     # Shared SolidJS hooks
+ │   ├── lib/                       # Theme aggregation, misc utils
+ │   ├── store/types.ts             # Legacy type re-exports (post-Redux)
+diff --git a/client_v2/src/__locales/en.json b/client_v2/src/__locales/en.json
+index 394b3f38..43e61ed7 100644
+--- a/client_v2/src/__locales/en.json
++++ b/client_v2/src/__locales/en.json
+@@ -497,6 +497,163 @@
+   "nothing_found": "Nothing found",
+   "notify_undo": "Undo",
+   "notify_updated": "Updated",
++  "obs_action_allow": "Allow",
++  "obs_action_allow_service": "Allow service",
++  "obs_action_block": "Block",
++  "obs_action_block_service": "Block service",
++  "obs_activity_heatmap": "Activity heatmap",
++  "obs_all_traffic": "All traffic",
++  "obs_allowed": "Allowed",
++  "obs_avg_per_slot": "Mean over %count% days",
++  "obs_blocked": "Blocked",
++  "obs_blocked_only": "Blocked only",
++  "obs_clear_filters": "Clear filters",
++  "obs_click_to_drill_down": "Click to drill down",
++  "obs_client_filter_placeholder": "Filter by client IP, ID, or name",
++  "obs_clients": "Clients",
++  "obs_collapse_all": "Collapse all",
++  "obs_control_apply": "Apply",
++  "obs_covered_legend": "Uncovered (below top list)",
++  "obs_current_hour": "Current hour",
++  "obs_devices": "Devices",
++  "obs_domain": "Domain",
++  "obs_domain_filter_placeholder": "Enter domain (e.g. example.com)",
++  "obs_domains_urls": "Domains & URLs",
++  "obs_drill_in": "Drill in",
++  "obs_drilldown_empty": "No matching query log records for this selection",
++  "obs_drilldown_hint": "Click any node or flow band to inspect devices, services, and blocked URLs",
++  "obs_drilldown_search_placeholder": "Search domain, device, service, or rule",
++  "obs_drilldown_title": "Flow breakdown",
++  "obs_empty_flow": "No query flow data for the selected window",
++  "obs_empty_heatmap": "No heatmap activity recorded for this selection",
++  "obs_empty_latency": "No latency samples recorded for the selected window",
++  "obs_empty_traffic_map": "No domain traffic recorded for this window",
++  "obs_enter_key_prompt": "Enter a client or domain to inspect its activity heatmap",
++  "obs_exemplar_tooltip": "%latency% · %domain% · %client% (%path%)",
++  "obs_expand_all": "Expand all",
++  "obs_filter_all": "All",
++  "obs_filter_allowed": "Allowed",
++  "obs_filter_blocked": "Blocked",
++  "obs_filter_category": "Category",
++  "obs_filter_client": "Client",
++  "obs_filter_domain": "Domain",
++  "obs_filter_filter_list": "Filter list",
++  "obs_filter_protocol": "Protocol",
++  "obs_filter_qtype": "Query type",
++  "obs_filter_rcode": "Response",
++  "obs_filter_reason": "Reason",
++  "obs_filter_rule": "Rule",
++  "obs_filter_service": "Service",
++  "obs_filter_status": "Decision",
++  "obs_filter_tag": "Tag",
++  "obs_filter_upstream": "Upstream",
++  "obs_flow_title": "Query flow",
++  "obs_fold_small": "Hide < 0.5%",
++  "obs_fold_weekdays": "Fold weekdays",
++  "obs_grain_15m": "15 min",
++  "obs_grain_1h": "1 hour",
++  "obs_grain_1m": "1 min",
++  "obs_group_by_client": "Clients",
++  "obs_group_by_protocol": "Protocol",
++  "obs_group_by_tag": "Tags",
++  "obs_growing_now": "Growing now",
++  "obs_heatmap_cell_tip": "%time% · %count%",
++  "obs_heatmap_title": "Heatmap",
++  "obs_heatmap_uncovered_tip": "%time% · not in hourly top-100",
++  "obs_hide_small_aria": "Toggle folding nodes under 0.5% into other",
++  "obs_hierarchy_tab": "Hierarchy",
++  "obs_inspect_all": "Inspect all traffic",
++  "obs_inspect_blocked": "Inspect blocked",
++  "obs_insights": "Insights",
++  "obs_kind_client": "Client",
++  "obs_kind_domain": "Domain",
++  "obs_kind_network": "Network",
++  "obs_latency": "Latency",
++  "obs_latency_by_path": "By path",
++  "obs_latency_by_upstream": "By upstream",
++  "obs_latency_cell_tip": "%time% · %bucket% · %count%",
++  "obs_latency_heatmap": "Latency heatmap",
++  "obs_lens_auto": "Auto",
++  "obs_lens_blocked": "Blocked cause",
++  "obs_lens_content": "Services",
++  "obs_lens_dns": "DNS",
++  "obs_lens_label": "View lens",
++  "obs_lens_overview": "Overview",
++  "obs_link_aria": "Flow from %source% to %target%: %count%",
++  "obs_live": "Live",
++  "obs_live_aria": "Toggle live automatic refresh",
++  "obs_matching_queries": "Matching queries",
++  "obs_measure_blocked": "Blocked only",
++  "obs_measure_queries": "All queries",
++  "obs_members_more": "+%count% more",
++  "obs_mode_name": "Domain",
++  "obs_mode_service": "Service",
++  "obs_mode_site": "Site",
++  "obs_node_aria": "Flow node %name%: %count%",
++  "obs_open_heatmap": "Open in Heatmap",
++  "obs_open_query_log": "Open in Query Log",
++  "obs_partial_notice": "Partial data: older hours lack detailed joint or sub-hour counters, or retention is shorter than the selected window.",
++  "obs_path_blocked": "Blocked",
++  "obs_path_cache": "Cache",
++  "obs_path_local": "Local",
++  "obs_path_upstream": "Upstream",
++  "obs_pivot_device": "By device",
++  "obs_pivot_rule": "By rule / list",
++  "obs_pivot_service": "By service",
++  "obs_precision_exact": "Exact stats buckets",
++  "obs_precision_querylog": "From query log",
++  "obs_precision_top_list": "From hourly top-100 lists",
++  "obs_prev_hour": "Previous hour",
++  "obs_queries_count": "| %count% query | %count% queries",
++  "obs_querylog_source_notice": "Computed from the query log (up to 24 h / 200,000 rows).",
++  "obs_recent_exemplars": "Recent exemplars",
++  "obs_recent_queries": "Recent queries",
++  "obs_remove_filter_aria": "Remove %label% filter",
++  "obs_rule_reason": "Rule / Reason",
++  "obs_scale_high": "Peak",
++  "obs_scale_low": "Empty",
++  "obs_service_badge": "Service",
++  "obs_service_blocked": "The <strong>%value%</strong> service was blocked",
++  "obs_services": "Services",
++  "obs_share": "Share",
++  "obs_show_exemplars": "Exemplars",
++  "obs_site_badge": "Site",
++  "obs_slo_off": "SLO: Off",
++  "obs_slo_target": "SLO: %label%",
++  "obs_source": "Source",
++  "obs_stage_category": "Category",
++  "obs_stage_client": "Device",
++  "obs_stage_decision": "Decision",
++  "obs_stage_domain": "Domain / URL",
++  "obs_stage_filter_list": "Filter list",
++  "obs_stage_group": "Source",
++  "obs_stage_qtype": "Type",
++  "obs_stage_reason": "Reason",
++  "obs_stage_response": "Response",
++  "obs_stage_rule": "Rule",
++  "obs_stage_service": "Service / Site",
++  "obs_stage_upstream": "Upstream",
++  "obs_status": "Status",
++  "obs_step_back": "Step back",
++  "obs_table_aria": "Toggle table view",
++  "obs_table_view": "Table",
++  "obs_target": "Target",
++  "obs_tile_aria": "%name%: %count% (%share%)",
++  "obs_time": "Time",
++  "obs_top_rules": "Matched rules",
++  "obs_total_queries": "Total",
++  "obs_traffic_map_title": "Traffic map",
++  "obs_tree_empty": "No hierarchical rows match this filter or search query",
++  "obs_tree_toggle_aria": "Toggle %label% children",
++  "obs_truncated_notice": "Truncated at the 200,000 query log scan limit.",
++  "obs_upstream_all": "All upstreams",
++  "obs_window_15m": "15 min",
++  "obs_window_1h": "1 h",
++  "obs_window_24h": "24 h",
++  "obs_window_30d": "30 d",
++  "obs_window_6h": "6 h",
++  "obs_window_7d": "7 d",
++  "obs_window_90d": "90 d",
+   "open_dashboard": "Open dashboard",
+   "out_of_range_error": "The address must not be within the DHCP range %start%–%end%",
+   "parental_control": "Parental Control",
+diff --git a/client_v2/src/__tests__/app-routing.test.tsx b/client_v2/src/__tests__/app-routing.test.tsx
+index c3743397..505ac5bd 100644
+--- a/client_v2/src/__tests__/app-routing.test.tsx
++++ b/client_v2/src/__tests__/app-routing.test.tsx
+@@ -60,6 +60,11 @@ vi.mock('panel/components/Stats', () => ({
+     TopUpstreamsPage: () => <div data-testid="route-top-upstreams" />,
+     UpstreamAvgTimePage: () => <div data-testid="route-upstream-avg-time" />,
+ }));
++vi.mock('panel/components/Observability', () => ({
++    FlowPage: () => <div data-testid="route-flow" />,
++    TrafficMapPage: () => <div data-testid="route-traffic-map" />,
++    HeatmapPage: () => <div data-testid="route-heatmap" />,
++}));
+ 
+ import App from '../components/App';
+ 
+@@ -78,6 +83,9 @@ describe('App routing', () => {
+         ['#/top_blocked_domains', 'route-top-blocked-domains'],
+         ['#/top_upstreams', 'route-top-upstreams'],
+         ['#/upstream_avg_time', 'route-upstream-avg-time'],
++        ['#/flow', 'route-flow'],
++        ['#/traffic_map', 'route-traffic-map'],
++        ['#/heatmap', 'route-heatmap'],
+     ])('renders the stats page for %s', async (hash, testid) => {
+         window.location.hash = hash;
+         render(() => <App />);
+diff --git a/client_v2/src/__tests__/services-store.test.ts b/client_v2/src/__tests__/services-store.test.ts
+index f924080b..19a4c784 100644
+--- a/client_v2/src/__tests__/services-store.test.ts
++++ b/client_v2/src/__tests__/services-store.test.ts
+@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
+ vi.mock('panel/api/generated', () => ({
+     blockedServicesSchedule: mocks.blockedServicesSchedule,
+     blockedServicesAll: mocks.blockedServicesAll,
+-    blockedServicesScheduleUpdate: vi.fn(),
++    blockedServicesScheduleUpdate: vi.fn().mockResolvedValue(undefined),
+ }));
+ vi.mock('panel/stores/toasts', () => ({
+     addErrorToast: mocks.addErrorToast,
+@@ -22,7 +22,13 @@ vi.mock('panel/common/intl', async () =>
+     (await import('panel/__tests__/helpers/copy')).createIntlMock(),
+ );
+ 
+-import { getBlockedServices, getAllBlockedServices, servicesState } from 'panel/stores/services';
++import {
++    getBlockedServices,
++    getAllBlockedServices,
++    blockService,
++    allowBlockedService,
++    servicesState,
++} from 'panel/stores/services';
+ import { resetStore } from 'panel/__tests__/helpers/resetStore';
+ 
+ describe('getBlockedServices — initialized flag', () => {
+@@ -72,3 +78,31 @@ describe('getAllBlockedServices — allInitialized flag', () => {
+         expect(mocks.addErrorToast).toHaveBeenCalled();
+     });
+ });
++
++describe('blockService and allowBlockedService', () => {
++    beforeEach(() => {
++        vi.clearAllMocks();
++        resetStore(servicesState, {
++            initialized: true,
++            list: { ids: [] },
++            allServices: [
++                { id: 'tiktok', name: 'TikTok', icon_svg: '', rules: [], group_id: 'social_network' },
++            ],
++        });
++    });
++
++    it('blocks and allows a service and emits undo toasts', async () => {
++        mocks.blockedServicesSchedule
++            .mockResolvedValueOnce({ ids: [] })
++            .mockResolvedValueOnce({ ids: ['tiktok'] });
++        await getBlockedServices();
++        const blocked = await blockService('tiktok');
++        expect(blocked).toBe(true);
++        expect(mocks.addSuccessToast).toHaveBeenCalledTimes(1);
++
++        mocks.blockedServicesSchedule.mockResolvedValueOnce({ ids: [] });
++        const allowed = await allowBlockedService('tiktok');
++        expect(allowed).toBe(true);
++        expect(mocks.addSuccessToast).toHaveBeenCalledTimes(2);
++    });
++});
+diff --git a/client_v2/src/api/generated.ts b/client_v2/src/api/generated.ts
+index 4c75db31..655ccbb2 100644
+--- a/client_v2/src/api/generated.ts
++++ b/client_v2/src/api/generated.ts
+@@ -50,7 +50,19 @@ import type {
+     SetProtectionRequest,
+     SetRulesRequest,
+     Stats,
++    StatsFlowDetailsParams,
++    StatsFlowDetailsResponse,
++    StatsFlowParams,
++    StatsFlowResponse,
++    StatsHeatmapParams,
++    StatsHeatmapResponse,
++    StatsLatencyExemplarsParams,
++    StatsLatencyExemplarsResponse,
++    StatsLatencyHeatmapParams,
++    StatsLatencyHeatmapResponse,
+     StatsParams,
++    StatsTrafficMapParams,
++    StatsTrafficMapResponse,
+     TlsConfig,
+     TlsConfigBody,
+     UpstreamsConfig,
+@@ -300,6 +312,180 @@ export const stats = async (params?: StatsParams, options?: RequestInit): Promis
+     });
+ };
+ 
++export const getStatsFlowUrl = (params?: StatsFlowParams) => {
++    const normalizedParams = new URLSearchParams();
++
++    Object.entries(params || {}).forEach(([key, value]) => {
++        if (value !== undefined) {
++            normalizedParams.append(key, value === null ? 'null' : String(value));
++        }
++    });
++
++    const stringifiedParams = normalizedParams.toString();
++
++    return stringifiedParams.length > 0
++        ? `control/stats/flow?${stringifiedParams}`
++        : `control/stats/flow`;
++};
++
++/**
++ * @summary Get 4-stage query flow Sankey graph
++ */
++export const statsFlow = async (
++    params?: StatsFlowParams,
++    options?: RequestInit,
++): Promise<StatsFlowResponse> => {
++    return customFetch<StatsFlowResponse>(getStatsFlowUrl(params), {
++        ...options,
++        method: 'GET',
++    });
++};
++
++export const getStatsFlowDetailsUrl = (params?: StatsFlowDetailsParams) => {
++    const normalizedParams = new URLSearchParams();
++
++    Object.entries(params || {}).forEach(([key, value]) => {
++        if (value !== undefined) {
++            normalizedParams.append(key, value === null ? 'null' : String(value));
++        }
++    });
++
++    const stringifiedParams = normalizedParams.toString();
++
++    return stringifiedParams.length > 0
++        ? `control/stats/flow/details?${stringifiedParams}`
++        : `control/stats/flow/details`;
++};
++
++/**
++ * @summary Get detailed breakdown for a query flow drill-down filter
++ */
++export const statsFlowDetails = async (
++    params?: StatsFlowDetailsParams,
++    options?: RequestInit,
++): Promise<StatsFlowDetailsResponse> => {
++    return customFetch<StatsFlowDetailsResponse>(getStatsFlowDetailsUrl(params), {
++        ...options,
++        method: 'GET',
++    });
++};
++
++export const getStatsTrafficMapUrl = (params?: StatsTrafficMapParams) => {
++    const normalizedParams = new URLSearchParams();
++
++    Object.entries(params || {}).forEach(([key, value]) => {
++        if (value !== undefined) {
++            normalizedParams.append(key, value === null ? 'null' : String(value));
++        }
++    });
++
++    const stringifiedParams = normalizedParams.toString();
++
++    return stringifiedParams.length > 0
++        ? `control/stats/traffic_map?${stringifiedParams}`
++        : `control/stats/traffic_map`;
++};
++
++/**
++ * @summary Get allowed and blocked domain counts for traffic treemap
++ */
++export const statsTrafficMap = async (
++    params?: StatsTrafficMapParams,
++    options?: RequestInit,
++): Promise<StatsTrafficMapResponse> => {
++    return customFetch<StatsTrafficMapResponse>(getStatsTrafficMapUrl(params), {
++        ...options,
++        method: 'GET',
++    });
++};
++
++export const getStatsHeatmapUrl = (params?: StatsHeatmapParams) => {
++    const normalizedParams = new URLSearchParams();
++
++    Object.entries(params || {}).forEach(([key, value]) => {
++        if (value !== undefined) {
++            normalizedParams.append(key, value === null ? 'null' : String(value));
++        }
++    });
++
++    const stringifiedParams = normalizedParams.toString();
++
++    return stringifiedParams.length > 0
++        ? `control/stats/heatmap?${stringifiedParams}`
++        : `control/stats/heatmap`;
++};
++
++/**
++ * @summary Get activity rhythm heatmap grid values
++ */
++export const statsHeatmap = async (
++    params?: StatsHeatmapParams,
++    options?: RequestInit,
++): Promise<StatsHeatmapResponse> => {
++    return customFetch<StatsHeatmapResponse>(getStatsHeatmapUrl(params), {
++        ...options,
++        method: 'GET',
++    });
++};
++
++export const getStatsLatencyHeatmapUrl = (params?: StatsLatencyHeatmapParams) => {
++    const normalizedParams = new URLSearchParams();
++
++    Object.entries(params || {}).forEach(([key, value]) => {
++        if (value !== undefined) {
++            normalizedParams.append(key, value === null ? 'null' : String(value));
++        }
++    });
++
++    const stringifiedParams = normalizedParams.toString();
++
++    return stringifiedParams.length > 0
++        ? `control/stats/latency_heatmap?${stringifiedParams}`
++        : `control/stats/latency_heatmap`;
++};
++
++/**
++ * @summary Get latency bucket histogram matrix over time
++ */
++export const statsLatencyHeatmap = async (
++    params?: StatsLatencyHeatmapParams,
++    options?: RequestInit,
++): Promise<StatsLatencyHeatmapResponse> => {
++    return customFetch<StatsLatencyHeatmapResponse>(getStatsLatencyHeatmapUrl(params), {
++        ...options,
++        method: 'GET',
++    });
++};
++
++export const getStatsLatencyExemplarsUrl = (params?: StatsLatencyExemplarsParams) => {
++    const normalizedParams = new URLSearchParams();
++
++    Object.entries(params || {}).forEach(([key, value]) => {
++        if (value !== undefined) {
++            normalizedParams.append(key, value === null ? 'null' : String(value));
++        }
++    });
++
++    const stringifiedParams = normalizedParams.toString();
++
++    return stringifiedParams.length > 0
++        ? `control/stats/latency_exemplars?${stringifiedParams}`
++        : `control/stats/latency_exemplars`;
++};
++
++/**
++ * @summary Get recent sampled latency exemplar queries
++ */
++export const statsLatencyExemplars = async (
++    params?: StatsLatencyExemplarsParams,
++    options?: RequestInit,
++): Promise<StatsLatencyExemplarsResponse> => {
++    return customFetch<StatsLatencyExemplarsResponse>(getStatsLatencyExemplarsUrl(params), {
++        ...options,
++        method: 'GET',
++    });
++};
++
+ export const getStatsResetUrl = () => {
+     return `control/stats_reset`;
+ };
+diff --git a/client_v2/src/api/model/clientFindSubEntry.ts b/client_v2/src/api/model/clientFindSubEntry.ts
+index 4473c90b..38276e6c 100644
+--- a/client_v2/src/api/model/clientFindSubEntry.ts
++++ b/client_v2/src/api/model/clientFindSubEntry.ts
+@@ -13,8 +13,6 @@ export interface ClientFindSubEntry {
+     filtering_enabled?: boolean;
+     parental_enabled?: boolean;
+     safebrowsing_enabled?: boolean;
+-    /** @deprecated */
+-    safesearch_enabled?: boolean;
+     safe_search?: SafeSearchConfig;
+     use_global_blocked_services?: boolean;
+     blocked_services?: string[];
+diff --git a/client_v2/src/api/model/index.ts b/client_v2/src/api/model/index.ts
+index 4ef91bf6..edcb3014 100644
+--- a/client_v2/src/api/model/index.ts
++++ b/client_v2/src/api/model/index.ts
+@@ -98,8 +98,51 @@ export * from './serviceGroup';
+ export * from './setProtectionRequest';
+ export * from './setRulesRequest';
+ export * from './stats';
++export * from './statsFlowDetailsClient';
++export * from './statsFlowDetailsDomain';
++export * from './statsFlowDetailsParams';
++export * from './statsFlowDetailsQuery';
++export * from './statsFlowDetailsResponse';
++export * from './statsFlowDetailsRule';
++export * from './statsFlowDetailsStatus';
++export * from './statsFlowDetailsTuple';
++export * from './statsFlowDetailsView';
++export * from './statsFlowDetailsWindow';
++export * from './statsFlowGroupBy';
++export * from './statsFlowLink';
++export * from './statsFlowNode';
++export * from './statsFlowNodeStage';
++export * from './statsFlowParams';
++export * from './statsFlowResponse';
++export * from './statsFlowResponseGroupBy';
++export * from './statsFlowResponseSource';
++export * from './statsFlowStatus';
++export * from './statsFlowView';
++export * from './statsFlowWindow';
++export * from './statsHeatmapGrain';
++export * from './statsHeatmapKind';
++export * from './statsHeatmapMeasure';
++export * from './statsHeatmapParams';
++export * from './statsHeatmapResponse';
++export * from './statsHeatmapResponsePrecision';
++export * from './statsHeatmapWindow';
++export * from './statsLatencyExemplar';
++export * from './statsLatencyExemplarsParams';
++export * from './statsLatencyExemplarsPath';
++export * from './statsLatencyExemplarsResponse';
++export * from './statsLatencyExemplarsWindow';
++export * from './statsLatencyHeatmapBy';
++export * from './statsLatencyHeatmapParams';
++export * from './statsLatencyHeatmapResponse';
++export * from './statsLatencyHeatmapResponseSeries';
++export * from './statsLatencyHeatmapStep';
++export * from './statsLatencyHeatmapWindow';
+ export * from './statsParams';
+ export * from './statsTimeUnits';
++export * from './statsTrafficMapItem';
++export * from './statsTrafficMapParams';
++export * from './statsTrafficMapResponse';
++export * from './statsTrafficMapWindow';
+ export * from './tlsConfig';
+ export * from './tlsConfigBody';
+ export * from './tlsConfigKeyType';
+diff --git a/client_v2/src/api/model/queryLogParams.ts b/client_v2/src/api/model/queryLogParams.ts
+index 85956102..331da236 100644
+--- a/client_v2/src/api/model/queryLogParams.ts
++++ b/client_v2/src/api/model/queryLogParams.ts
+@@ -6,11 +6,15 @@ export type QueryLogParams = {
+      */
+     older_than?: string;
+     /**
+-     * Specify the ranking number of the first item on the page.  Even though it is possible to use "offset" and "older_than", we recommend choosing one of them and sticking to it.
++     * Specify the ranking number of the first item on the page.  Even though it is possible to use "offset" and "older_than", we recommend choosing one of them and sticking to it.  The sum of offset and limit should not exceed 2147483647.  If the given offset is invalid, the default value will be used instead.
++     * @minimum 0
++     * @maximum 2147483647
+      */
+     offset?: number;
+     /**
+-     * Limit the number of records to be returned
++     * Limit the number of records to be returned.  The sum of offset and limit should not exceed 2147483647.  If the given limit is invalid, the default value will be used instead.
++     * @minimum 0
++     * @maximum 2147483647
+      */
+     limit?: number;
+     /**
+diff --git a/client_v2/src/common/styles/colors/dark.css b/client_v2/src/common/styles/colors/dark.css
+index c88799d1..5d5bc0f5 100644
+--- a/client_v2/src/common/styles/colors/dark.css
++++ b/client_v2/src/common/styles/colors/dark.css
+@@ -153,4 +153,18 @@
+     --default-logo-color: var(--gray-0);
+     /* Text selection */
+     --selected-background: var(--product-tertiary-90);
++    /* Observability */
++    --obs-allowed: var(--product-tertiary-40);
++    --obs-blocked: var(--red-50);
++    --obs-cached: var(--product-primary-50);
++    --obs-forwarded: var(--product-tertiary-40);
++    --obs-rewritten: var(--orange-50);
++    --obs-local: var(--product-secondary-50);
++    --obs-error: var(--red-50);
++    --obs-other: var(--gray-50);
++    --obs-hm-bg: var(--gray-90);
++    --obs-hm-hatch: var(--gray-70);
++    --obs-hm-ink: var(--product-tertiary-40);
++    --obs-hm-blocked-ink: var(--red-50);
++    --obs-hot-ring: var(--orange-50);
+ }
+diff --git a/client_v2/src/common/styles/colors/light.css b/client_v2/src/common/styles/colors/light.css
+index 73cb2bc6..d0df269a 100644
+--- a/client_v2/src/common/styles/colors/light.css
++++ b/client_v2/src/common/styles/colors/light.css
+@@ -148,4 +148,18 @@
+     --default-logo-color: var(--gray-100);
+     /* Text selection */
+     --selected-background: var(--product-tertiary-20);
++    /* Observability */
++    --obs-allowed: var(--product-tertiary-50);
++    --obs-blocked: var(--red-50);
++    --obs-cached: var(--product-primary-50);
++    --obs-forwarded: var(--product-tertiary-60);
++    --obs-rewritten: var(--orange-50);
++    --obs-local: var(--product-secondary-50);
++    --obs-error: var(--red-60);
++    --obs-other: var(--gray-50);
++    --obs-hm-bg: var(--gray-10);
++    --obs-hm-hatch: var(--gray-30);
++    --obs-hm-ink: var(--product-tertiary-60);
++    --obs-hm-blocked-ink: var(--red-50);
++    --obs-hot-ring: var(--orange-50);
+ }
+diff --git a/client_v2/src/common/ui/Icons/Icons.tsx b/client_v2/src/common/ui/Icons/Icons.tsx
+index da5da959..f790f7be 100644
+--- a/client_v2/src/common/ui/Icons/Icons.tsx
++++ b/client_v2/src/common/ui/Icons/Icons.tsx
+@@ -58,6 +58,10 @@ export const ICONS = {
+     user: 'user',
+     recent: 'recent',
+     download: 'download',
++    insights: 'insights',
++    flow: 'flow',
++    traffic_map: 'traffic_map',
++    heatmap: 'heatmap',
+ } as const;
+ 
+ export type IconType = keyof typeof ICONS;
+@@ -1138,5 +1142,73 @@ export const Icons = () => (
+                 stroke-linejoin="round"
+             />
+         </symbol>
++
++        <symbol id="insights" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++            <path
++                d="M3 12H7L10 5L14 19L17 12H21"
++                stroke="currentColor"
++                stroke-width="1.5"
++                stroke-linecap="round"
++                stroke-linejoin="round"
++            />
++        </symbol>
++
++        <symbol id="flow" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++            <path
++                d="M4 6H8C11 6 12 12 16 12H20M4 18H8C11 18 12 12 16 12M4 12H8C11 12 12 7 16 7H20M16 17H20C16 17 12 12 8 12"
++                stroke="currentColor"
++                stroke-width="1.5"
++                stroke-linecap="round"
++                stroke-linejoin="round"
++            />
++            <circle cx="4" cy="6" r="1.5" fill="currentColor" />
++            <circle cx="4" cy="12" r="1.5" fill="currentColor" />
++            <circle cx="4" cy="18" r="1.5" fill="currentColor" />
++            <circle cx="20" cy="7" r="1.5" fill="currentColor" />
++            <circle cx="20" cy="12" r="1.5" fill="currentColor" />
++            <circle cx="20" cy="17" r="1.5" fill="currentColor" />
++        </symbol>
++
++        <symbol id="traffic_map" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++            <rect
++                x="3"
++                y="4"
++                width="10"
++                height="9"
++                rx="1.5"
++                stroke="currentColor"
++                stroke-width="1.5"
++            />
++            <rect
++                x="15"
++                y="4"
++                width="6"
++                height="16"
++                rx="1.5"
++                stroke="currentColor"
++                stroke-width="1.5"
++            />
++            <rect
++                x="3"
++                y="15"
++                width="10"
++                height="5"
++                rx="1.5"
++                stroke="currentColor"
++                stroke-width="1.5"
++            />
++        </symbol>
++
++        <symbol id="heatmap" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++            <rect x="4" y="4" width="4" height="4" rx="0.8" fill="currentColor" />
++            <rect x="10" y="4" width="4" height="4" rx="0.8" fill="currentColor" opacity="0.45" />
++            <rect x="16" y="4" width="4" height="4" rx="0.8" fill="currentColor" />
++            <rect x="4" y="10" width="4" height="4" rx="0.8" fill="currentColor" opacity="0.45" />
++            <rect x="10" y="10" width="4" height="4" rx="0.8" fill="currentColor" />
++            <rect x="16" y="10" width="4" height="4" rx="0.8" fill="currentColor" opacity="0.25" />
++            <rect x="4" y="16" width="4" height="4" rx="0.8" fill="currentColor" opacity="0.25" />
++            <rect x="10" y="16" width="4" height="4" rx="0.8" fill="currentColor" opacity="0.65" />
++            <rect x="16" y="16" width="4" height="4" rx="0.8" fill="currentColor" />
++        </symbol>
+     </svg>
+ );
+diff --git a/client_v2/src/common/ui/Menu/Menu.tsx b/client_v2/src/common/ui/Menu/Menu.tsx
+index 3ed5cd8e..1f063cd7 100644
+--- a/client_v2/src/common/ui/Menu/Menu.tsx
++++ b/client_v2/src/common/ui/Menu/Menu.tsx
+@@ -60,6 +60,28 @@ export const Menu = (props: Props) => {
+                         </span>
+                     </Link>
+                 </div>
++                <AccordionSection
++                    title={intl.getMessage('obs_insights')}
++                    icon="insights"
++                    items={[
++                        {
++                            label: intl.getMessage('obs_flow_title'),
++                            path: Paths.Flow,
++                            routePath: RoutePath.Flow,
++                        },
++                        {
++                            label: intl.getMessage('obs_traffic_map_title'),
++                            path: Paths.TrafficMap,
++                            routePath: RoutePath.TrafficMap,
++                        },
++                        {
++                            label: intl.getMessage('obs_heatmap_title'),
++                            path: Paths.Heatmap,
++                            routePath: RoutePath.Heatmap,
++                        },
++                    ]}
++                    isActive={isActive}
++                />
+                 <AccordionSection
+                     title={intl.getMessage('settings')}
+                     icon="settings"
+diff --git a/client_v2/src/components/App/index.tsx b/client_v2/src/components/App/index.tsx
+index 7de3b8c3..f54081dc 100644
+--- a/client_v2/src/components/App/index.tsx
++++ b/client_v2/src/components/App/index.tsx
+@@ -49,6 +49,7 @@ import {
+     TopUpstreamsPage,
+     UpstreamAvgTimePage,
+ } from '../Stats';
++import { FlowPage, TrafficMapPage, HeatmapPage } from '../Observability';
+ 
+ const SetupGuideRoute = () => <SetupGuide />;
+ const BlockedServicesRoute = () => <BlockedServices />;
+@@ -186,6 +187,9 @@ const App = () => {
+             <Route path={Paths.TopBlockedDomains} component={TopBlockedDomainsPage} />
+             <Route path={Paths.TopUpstreams} component={TopUpstreamsPage} />
+             <Route path={Paths.UpstreamAvgTime} component={UpstreamAvgTimePage} />
++            <Route path={Paths.Flow} component={FlowPage} />
++            <Route path={Paths.TrafficMap} component={TrafficMapPage} />
++            <Route path={Paths.Heatmap} component={HeatmapPage} />
+             <Route path={Paths.SettingsPage} component={Settings} />
+             <Route path={Paths.Encryption} component={Encryption} />
+             <Route path={Paths.Dns} component={DnsSettings} />
+diff --git a/client_v2/src/components/Routes/Paths.ts b/client_v2/src/components/Routes/Paths.ts
+index 758c1105..579fba0a 100644
+--- a/client_v2/src/components/Routes/Paths.ts
++++ b/client_v2/src/components/Routes/Paths.ts
+@@ -34,6 +34,9 @@ export const RoutePath = {
+     TopBlockedDomains: 'TopBlockedDomains',
+     TopUpstreams: 'TopUpstreams',
+     UpstreamAvgTime: 'UpstreamAvgTime',
++    Flow: 'Flow',
++    TrafficMap: 'TrafficMap',
++    Heatmap: 'Heatmap',
+ } as const;
+ 
+ export type RoutePathKey = keyof typeof RoutePath;
+@@ -77,6 +80,9 @@ export const Paths: Record<RoutePathKey, string> = {
+     TopBlockedDomains: pathBuilder('top_blocked_domains'),
+     TopUpstreams: pathBuilder('top_upstreams'),
+     UpstreamAvgTime: pathBuilder('upstream_avg_time'),
++    Flow: pathBuilder('flow'),
++    TrafficMap: pathBuilder('traffic_map'),
++    Heatmap: pathBuilder('heatmap'),
+ };
+ 
+ export type LinkParams = Partial<Record<string, string | number>>;
+diff --git a/client_v2/src/helpers/localStorageHelper.ts b/client_v2/src/helpers/localStorageHelper.ts
+index a24de97e..16fd7994 100644
+--- a/client_v2/src/helpers/localStorageHelper.ts
++++ b/client_v2/src/helpers/localStorageHelper.ts
+@@ -17,6 +17,7 @@ export const LOCAL_STORAGE_KEYS = {
+     TOP_BLOCKED_DOMAINS_SORT: 'top_blocked_domains_sort',
+     TOP_UPSTREAMS_SORT: 'top_upstreams_sort',
+     UPSTREAM_AVG_TIME_SORT: 'upstream_avg_time_sort',
++    TRAFFIC_MAP_MODE: 'traffic_map_mode',
+ };
+ 
+ export const LocalStorageHelper = {
+diff --git a/client_v2/src/stores/services.ts b/client_v2/src/stores/services.ts
+index 2e0d093b..a83bd795 100644
+--- a/client_v2/src/stores/services.ts
++++ b/client_v2/src/stores/services.ts
+@@ -110,4 +110,34 @@ export const allowBlockedService = async (serviceId: string): Promise<boolean> =
+     return true;
+ };
+ 
++export const blockService = async (serviceId: string): Promise<boolean> => {
++    let list = untrack(() => state.list);
++    if (!Array.isArray(list?.ids)) {
++        await getBlockedServices();
++        list = untrack(() => state.list);
++    }
++    const currentIds = Array.isArray(list?.ids) ? list.ids : [];
++    if (currentIds.includes(serviceId)) return true;
++    const serviceName =
++        state.allServices.find((s) => s.id === serviceId)?.name || serviceId;
++    const didUpdate = await updateBlockedServices({
++        ids: [...currentIds, serviceId],
++        schedule: list?.schedule,
++    });
++    if (!didUpdate) return false;
++    addSuccessToast(
++        createUndoToast(
++            intl.getMessage('obs_service_blocked', { value: serviceName }),
++            intl.getMessage('notify_undo'),
++            async () => {
++                await updateBlockedServices({
++                    ids: currentIds,
++                    schedule: list?.schedule,
++                });
++            },
++        ),
++    );
++    return true;
++};
++
+ export const servicesState = untrack(() => state);
+diff --git a/internal/dnsforward/stats.go b/internal/dnsforward/stats.go
+index a0b5a72d..cfc7f8eb 100644
+--- a/internal/dnsforward/stats.go
++++ b/internal/dnsforward/stats.go
+@@ -2,6 +2,7 @@ package dnsforward
+ 
+ import (
+ 	"context"
++	"fmt"
+ 	"log/slog"
+ 	"net"
+ 	"time"
+@@ -144,17 +145,29 @@ func (s *Server) updateStats(dctx *dnsContext, clientIP string, processingTime t
+ 	pctx := dctx.proxyCtx
+ 
+ 	var upstreamStats []*proxy.UpstreamStatistics
++	var cached bool
+ 	qs := pctx.QueryStatistics()
+ 	if qs != nil {
+-		upstreamStats = append(upstreamStats, qs.Main()...)
++		ms := qs.Main()
++		if len(ms) == 1 && ms[0].IsCached {
++			cached = true
++		}
++		upstreamStats = append(upstreamStats, ms...)
+ 		upstreamStats = append(upstreamStats, qs.Fallback()...)
+ 	}
+ 
++	ts := dctx.startTime
++	if ts.IsZero() {
++		ts = time.Now()
++	}
++
+ 	e := &stats.Entry{
+ 		UpstreamStats:  upstreamStats,
+ 		Domain:         aghnet.NormalizeDomain(pctx.Req.Question[0].Name),
+ 		Result:         stats.RNotFiltered,
+ 		ProcessingTime: processingTime,
++		Timestamp:      ts,
++		Cached:         cached,
+ 	}
+ 
+ 	if clientID := dctx.clientID; clientID != "" {
+@@ -163,7 +176,46 @@ func (s *Server) updateStats(dctx *dnsContext, clientIP string, processingTime t
+ 		e.Client = clientIP
+ 	}
+ 
+-	switch dctx.result.Reason {
++	switch pctx.Proto {
++	case proxy.ProtoHTTPS:
++		e.ClientProto = "doh"
++	case proxy.ProtoQUIC:
++		e.ClientProto = "doq"
++	case proxy.ProtoTLS:
++		e.ClientProto = "dot"
++	case proxy.ProtoDNSCrypt:
++		e.ClientProto = "dnscrypt"
++	default:
++		e.ClientProto = "plain"
++	}
++
++	if !cached {
++		if pctx.Upstream != nil {
++			e.Upstream = pctx.Upstream.Address()
++		} else {
++			for _, us := range upstreamStats {
++				if us != nil && !us.IsCached {
++					e.Upstream = us.Address
++					break
++				}
++			}
++		}
++	}
++
++	if pctx.Res != nil {
++		if rc, ok := dns.RcodeToString[pctx.Res.Rcode]; ok {
++			e.Rcode = rc
++		} else {
++			e.Rcode = fmt.Sprintf("RCODE%d", pctx.Res.Rcode)
++		}
++	}
++
++	var reason filtering.Reason
++	if dctx.result != nil {
++		reason = dctx.result.Reason
++	}
++
++	switch reason {
+ 	case filtering.FilteredSafeBrowsing:
+ 		e.Result = stats.RSafeBrowsing
+ 	case filtering.FilteredParental:
+@@ -177,5 +229,23 @@ func (s *Server) updateStats(dctx *dnsContext, clientIP string, processingTime t
+ 		e.Result = stats.RFiltered
+ 	}
+ 
++	switch {
++	case e.Result != stats.RNotFiltered:
++		e.Status = "blocked"
++	case
++		reason == filtering.Rewritten,
++		reason == filtering.RewrittenAutoHosts,
++		reason == filtering.RewrittenRule:
++		e.Status = "rewritten"
++	case cached:
++		e.Status = "cached"
++	case dctx.err != nil:
++		e.Status = "error"
++	case dctx.responseFromUpstream || e.Upstream != "":
++		e.Status = "forwarded"
++	default:
++		e.Status = "local"
++	}
++
+ 	s.stats.Update(e)
+ }
+diff --git a/internal/dnsforward/stats_internal_test.go b/internal/dnsforward/stats_internal_test.go
+index 91f5aa85..a68933fb 100644
+--- a/internal/dnsforward/stats_internal_test.go
++++ b/internal/dnsforward/stats_internal_test.go
+@@ -240,3 +240,115 @@ func TestServer_ProcessQueryLogsAndStats(t *testing.T) {
+ 		})
+ 	}
+ }
++
++func TestServer_UpdateStats_observability(t *testing.T) {
++	ups, err := upstream.AddressToUpstream("1.1.1.1", nil)
++	require.NoError(t, err)
++
++	req := &dns.Msg{
++		Question: []dns.Question{{Name: "example.com."}},
++	}
++
++	testCases := []struct {
++		name         string
++		proto        proxy.Proto
++		upstream     upstream.Upstream
++		reason       filtering.Reason
++		rcode        int
++		hasRes       bool
++		fromUpstream bool
++		err          error
++		wantStatus   string
++		wantRcode    string
++		wantUpstream string
++		wantProto    string
++	}{{
++		name:         "forwarded_servfail",
++		proto:        proxy.ProtoHTTPS,
++		upstream:     ups,
++		reason:       filtering.NotFilteredNotFound,
++		rcode:        dns.RcodeServerFailure,
++		hasRes:       true,
++		fromUpstream: true,
++		wantStatus:   "forwarded",
++		wantRcode:    "SERVFAIL",
++		wantUpstream: ups.Address(),
++		wantProto:    "doh",
++	}, {
++		name:       "blocked_nxdomain",
++		proto:      proxy.ProtoTLS,
++		reason:     filtering.FilteredBlockList,
++		rcode:      dns.RcodeNameError,
++		hasRes:     true,
++		wantStatus: "blocked",
++		wantRcode:  "NXDOMAIN",
++		wantProto:  "dot",
++	}, {
++		name:       "rewritten",
++		proto:      proxy.ProtoQUIC,
++		reason:     filtering.RewrittenRule,
++		rcode:      dns.RcodeSuccess,
++		hasRes:     true,
++		wantStatus: "rewritten",
++		wantRcode:  "NOERROR",
++		wantProto:  "doq",
++	}, {
++		name:       "local",
++		proto:      proxy.ProtoUDP,
++		reason:     filtering.NotFilteredNotFound,
++		rcode:      dns.RcodeSuccess,
++		hasRes:     true,
++		wantStatus: "local",
++		wantRcode:  "NOERROR",
++		wantProto:  "plain",
++	}, {
++		name:         "error_dead_end",
++		proto:        proxy.ProtoDNSCrypt,
++		upstream:     ups,
++		reason:       filtering.NotFilteredNotFound,
++		err:          assert.AnError,
++		wantStatus:   "error",
++		wantRcode:    "",
++		wantUpstream: ups.Address(),
++		wantProto:    "dnscrypt",
++	}}
++
++	for _, tc := range testCases {
++		t.Run(tc.name, func(t *testing.T) {
++			st := &testStats{}
++			srv := &Server{
++				baseLogger: testLogger,
++				logger:     testLogger,
++				stats:      st,
++				anonymizer: aghnet.NewIPMut(nil),
++			}
++
++			var res *dns.Msg
++			if tc.hasRes {
++				res = &dns.Msg{MsgHdr: dns.MsgHdr{Rcode: tc.rcode}}
++			}
++
++			dctx := &dnsContext{
++				proxyCtx: &proxy.DNSContext{
++					Proto:    tc.proto,
++					Req:      req,
++					Res:      res,
++					Addr:     testClientAddrPort,
++					Upstream: tc.upstream,
++				},
++				startTime:            time.Now(),
++				result:               &filtering.Result{Reason: tc.reason},
++				responseFromUpstream: tc.fromUpstream,
++				err:                  tc.err,
++			}
++
++			srv.updateStats(dctx, "1.2.3.4", 12*time.Millisecond)
++			require.NotNil(t, st.lastEntry)
++			assert.Equal(t, tc.wantStatus, st.lastEntry.Status)
++			assert.Equal(t, tc.wantRcode, st.lastEntry.Rcode)
++			assert.Equal(t, tc.wantUpstream, st.lastEntry.Upstream)
++			assert.Equal(t, tc.wantProto, st.lastEntry.ClientProto)
++			assert.False(t, st.lastEntry.Timestamp.IsZero())
++		})
++	}
++}
+diff --git a/internal/filtering/blocked.go b/internal/filtering/blocked.go
+index 1df25455..738a5e01 100644
+--- a/internal/filtering/blocked.go
++++ b/internal/filtering/blocked.go
+@@ -7,6 +7,8 @@ import (
+ 	"log/slog"
+ 	"net/http"
+ 	"slices"
++	"strings"
++	"sync"
+ 	"time"
+ 
+ 	"github.com/AdguardTeam/AdGuardHome/internal/aghhttp"
+@@ -208,3 +210,129 @@ func (d *DNSFilter) handleBlockedServicesUpdate(w http.ResponseWriter, r *http.R
+ 
+ 	d.conf.ConfModifier.Apply(ctx)
+ }
++
++// DomainServiceInfo describes an AdGuard catalog service and category matching
++// a domain or service ID.
++type DomainServiceInfo struct {
++	ID      string
++	Name    string
++	GroupID string
++}
++
++var (
++	domainServiceOnce   sync.Once
++	domainServiceByHost map[string]DomainServiceInfo
++	domainServiceByID   map[string]DomainServiceInfo
++)
++
++func initDomainServiceIndex() {
++	domainServiceByHost = make(map[string]DomainServiceInfo, len(blockedServices)*4)
++	domainServiceByID = make(map[string]DomainServiceInfo, len(blockedServices))
++
++	for _, svc := range blockedServices {
++		info := DomainServiceInfo{
++			ID:      svc.ID,
++			Name:    svc.Name,
++			GroupID: svc.GroupID,
++		}
++		if info.Name == "" {
++			info.Name = info.ID
++		}
++		domainServiceByID[strings.ToLower(svc.ID)] = info
++
++		for _, raw := range svc.Rules {
++			host := parseServiceRuleHost(raw)
++			if host == "" {
++				continue
++			}
++			if _, exists := domainServiceByHost[host]; !exists {
++				domainServiceByHost[host] = info
++			}
++		}
++	}
++}
++
++func parseServiceRuleHost(raw string) string {
++	rule := strings.TrimSpace(strings.ToLower(raw))
++	if rule == "" || strings.HasPrefix(rule, "!") || strings.HasPrefix(rule, "@@") {
++		return ""
++	}
++	if idx := strings.IndexByte(rule, '$'); idx >= 0 {
++		rule = rule[:idx]
++	}
++	rule = strings.TrimPrefix(rule, "||")
++	rule = strings.TrimPrefix(rule, "|")
++	rule = strings.TrimPrefix(rule, "*.")
++	rule = strings.TrimSuffix(rule, "^")
++	rule = strings.TrimSuffix(rule, ".")
++	if rule == "" || strings.ContainsAny(rule, "*/") || !strings.Contains(rule, ".") {
++		return ""
++	}
++
++	return rule
++}
++
++// LookupServiceByID resolves a service ID from [blockedServices].
++func LookupServiceByID(id string) (DomainServiceInfo, bool) {
++	domainServiceOnce.Do(initDomainServiceIndex)
++	info, ok := domainServiceByID[strings.ToLower(strings.TrimSpace(id))]
++
++	return info, ok
++}
++
++// LookupDomainService resolves an AdGuard catalog service and category for
++// domain by walking parent domain suffixes.
++func LookupDomainService(domain string) (DomainServiceInfo, bool) {
++	domainServiceOnce.Do(initDomainServiceIndex)
++
++	host := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(domain), "."))
++	if host == "" {
++		return DomainServiceInfo{}, false
++	}
++
++	parts := strings.Split(host, ".")
++	for i := range max(0, len(parts)-1) {
++		candidate := strings.Join(parts[i:], ".")
++		if info, ok := domainServiceByHost[candidate]; ok {
++			return info, true
++		}
++	}
++
++	return DomainServiceInfo{}, false
++}
++
++// FilterListName returns a human-readable filter list name for id.
++func (d *DNSFilter) FilterListName(id rulelist.APIID) string {
++	switch id {
++	case rulelist.APIIDCustom:
++		return "Custom filtering rules"
++	case rulelist.APIIDEtcHosts:
++		return "/etc/hosts"
++	case rulelist.APIIDBlockedService:
++		return "Blocked services"
++	case rulelist.APIIDParentalControl:
++		return "Parental control"
++	case rulelist.APIIDSafeBrowsing:
++		return "Safe Browsing"
++	case rulelist.APIIDSafeSearch:
++		return "Safe Search"
++	}
++
++	if d != nil && d.conf.filtersMu != nil {
++		d.conf.filtersMu.RLock()
++		defer d.conf.filtersMu.RUnlock()
++
++		for _, f := range d.conf.Filters {
++			if rulelist.APIID(f.ID) == id && f.Name != "" {
++				return f.Name
++			}
++		}
++		for _, f := range d.conf.WhitelistFilters {
++			if rulelist.APIID(f.ID) == id && f.Name != "" {
++				return f.Name
++			}
++		}
++	}
++
++	return fmt.Sprintf("Filter #%d", id)
++}
+diff --git a/internal/home/clients.go b/internal/home/clients.go
+index b6913c05..e66d1ca5 100644
+--- a/internal/home/clients.go
++++ b/internal/home/clients.go
+@@ -439,6 +439,56 @@ func (clients *clientsContainer) shouldCountClient(ids []string) (y bool) {
+ 	return true
+ }
+ 
++// clientGroup resolves the primary tag/group name for the given client IDs, or
++// "untagged" when no persistent client tag exists.
++func (clients *clientsContainer) clientGroup(ids []string) string {
++	clients.lock.Lock()
++	defer clients.lock.Unlock()
++
++	if clients.storage == nil {
++		return "untagged"
++	}
++
++	params := &client.FindParams{}
++	for _, id := range ids {
++		if id == "" {
++			continue
++		}
++		if err := params.Set(id); err != nil {
++			continue
++		}
++		if cli, ok := clients.storage.Find(params); ok && len(cli.Tags) > 0 && cli.Tags[0] != "" {
++			return cli.Tags[0]
++		}
++	}
++
++	return "untagged"
++}
++
++// clientName resolves a friendly display name for a client ID or IP, returning
++// an empty string if none is configured or discovered.
++func (clients *clientsContainer) clientName(id string) string {
++	if id == "" || clients.storage == nil {
++		return ""
++	}
++
++	ip, _ := netip.ParseAddr(id)
++	if cli, ok := clients.storage.FindLoose(ip, id); ok && cli.Name != "" {
++		return cli.Name
++	}
++
++	if ip.IsValid() {
++		if rc := clients.storage.ClientRuntime(ip); rc != nil {
++			_, host := rc.Info()
++			if host != "" {
++				return host
++			}
++		}
++	}
++
++	return ""
++}
++
+ // type check
+ var _ client.AddressUpdater = (*clientsContainer)(nil)
+ 
+diff --git a/internal/home/dns.go b/internal/home/dns.go
+index 08fb565c..8b281e9b 100644
+--- a/internal/home/dns.go
++++ b/internal/home/dns.go
+@@ -20,6 +20,7 @@ import (
+ 	"github.com/AdguardTeam/AdGuardHome/internal/configmgr"
+ 	"github.com/AdguardTeam/AdGuardHome/internal/dnsforward"
+ 	"github.com/AdguardTeam/AdGuardHome/internal/filtering"
++	"github.com/AdguardTeam/AdGuardHome/internal/filtering/rulelist"
+ 	"github.com/AdguardTeam/AdGuardHome/internal/querylog"
+ 	"github.com/AdguardTeam/AdGuardHome/internal/stats"
+ 	"github.com/AdguardTeam/dnscrypt"
+@@ -55,27 +56,6 @@ func initDNS(
+ ) (err error) {
+ 	anonymizer := config.anonymizer()
+ 
+-	statsConf := stats.Config{
+-		Logger:            baseLogger.With(slogutil.KeyPrefix, "stats"),
+-		Filename:          filepath.Join(statsDir, "stats.db"),
+-		Limit:             time.Duration(config.Stats.Interval),
+-		ConfigModifier:    confModifier,
+-		HTTPReg:           httpReg,
+-		Enabled:           config.Stats.Enabled,
+-		ShouldCountClient: globalContext.clients.shouldCountClient,
+-	}
+-
+-	engine, err := aghnet.NewIgnoreEngine(config.Stats.Ignored, config.Stats.IgnoredEnabled)
+-	if err != nil {
+-		return fmt.Errorf("statistics: ignored list: %w", err)
+-	}
+-
+-	statsConf.Ignored = engine
+-	globalContext.stats, err = stats.New(statsConf)
+-	if err != nil {
+-		return fmt.Errorf("init stats: %w", err)
+-	}
+-
+ 	conf := querylog.Config{
+ 		Logger:            baseLogger.With(slogutil.KeyPrefix, "querylog"),
+ 		Anonymizer:        anonymizer,
+@@ -90,7 +70,7 @@ func initDNS(
+ 		FileEnabled:       config.QueryLog.FileEnabled,
+ 	}
+ 
+-	engine, err = aghnet.NewIgnoreEngine(config.QueryLog.Ignored, config.QueryLog.IgnoredEnabled)
++	engine, err := aghnet.NewIgnoreEngine(config.QueryLog.Ignored, config.QueryLog.IgnoredEnabled)
+ 	if err != nil {
+ 		return fmt.Errorf("querylog: ignored list: %w", err)
+ 	}
+@@ -101,6 +81,56 @@ func initDNS(
+ 		return fmt.Errorf("init querylog: %w", err)
+ 	}
+ 
++	statsConf := stats.Config{
++		Logger:            baseLogger.With(slogutil.KeyPrefix, "stats"),
++		Filename:          filepath.Join(statsDir, "stats.db"),
++		Limit:             time.Duration(config.Stats.Interval),
++		ConfigModifier:    confModifier,
++		HTTPReg:           httpReg,
++		Enabled:           config.Stats.Enabled,
++		ShouldCountClient: globalContext.clients.shouldCountClient,
++		ClientGroup:       globalContext.clients.clientGroup,
++		ClientName:        globalContext.clients.clientName,
++		DomainService: func(domain, explicitServiceID string) (id, name, category string) {
++			if explicitServiceID != "" {
++				if info, ok := filtering.LookupServiceByID(explicitServiceID); ok {
++					return info.ID, info.Name, info.GroupID
++				}
++
++				return explicitServiceID, explicitServiceID, ""
++			}
++			if info, ok := filtering.LookupDomainService(domain); ok {
++				return info.ID, info.Name, info.GroupID
++			}
++
++			return "", "", ""
++		},
++		FilterListName: func(id int64, hasFilterList bool, reason string) string {
++			if !hasFilterList {
++				return ""
++			}
++			if globalContext.filters != nil {
++				return globalContext.filters.FilterListName(rulelist.APIID(id))
++			}
++
++			return ""
++		},
++	}
++	if scanner, ok := globalContext.queryLog.(querylog.Scanner); ok {
++		statsConf.QueryLogScanner = queryLogScannerAdapter{scanner: scanner}
++	}
++
++	engine, err = aghnet.NewIgnoreEngine(config.Stats.Ignored, config.Stats.IgnoredEnabled)
++	if err != nil {
++		return fmt.Errorf("statistics: ignored list: %w", err)
++	}
++
++	statsConf.Ignored = engine
++	globalContext.stats, err = stats.New(statsConf)
++	if err != nil {
++		return fmt.Errorf("init stats: %w", err)
++	}
++
+ 	globalContext.filters, err = filtering.New(config.Filtering, nil)
+ 	if err != nil {
+ 		// Don't wrap the error, since it's informative enough as is.
+@@ -133,6 +163,45 @@ func initDNS(
+ 	return nil
+ }
+ 
++// queryLogScannerAdapter adapts [querylog.Scanner] to [stats.QueryLogScanner].
++type queryLogScannerAdapter struct {
++	scanner querylog.Scanner
++}
++
++// Scan implements the [stats.QueryLogScanner] interface.
++func (a queryLogScannerAdapter) Scan(
++	ctx context.Context,
++	params stats.QueryLogScanParams,
++	fn func(stats.QueryLogEntry) bool,
++) (bool, error) {
++	return a.scanner.Scan(ctx, querylog.ScanParams{
++		Since:      params.Since,
++		Until:      params.Until,
++		Client:     params.Client,
++		Domain:     params.Domain,
++		MaxEntries: params.MaxEntries,
++	}, func(e querylog.ScanEntry) bool {
++		return fn(stats.QueryLogEntry{
++			Time:          e.Time,
++			Domain:        e.Domain,
++			Client:        e.Client,
++			ClientName:    e.ClientName,
++			ClientProto:   e.ClientProto,
++			QType:         e.QType,
++			Status:        e.Status,
++			Upstream:      e.Upstream,
++			Rcode:         e.Rcode,
++			Reason:        e.Reason,
++			Rule:          e.Rule,
++			ServiceName:   e.ServiceName,
++			FilterListID:  e.FilterListID,
++			HasFilterList: e.HasFilterList,
++			Elapsed:       e.Elapsed,
++			Blocked:       e.Blocked,
++		})
++	})
++}
++
+ // initDNSServer initializes the [context.dnsServer].  To only use the internal
+ // proxy, none of the arguments are required, but params must be non-nil and
+ // valid.  In other cases all the arguments also must not be nil.  It also must
+diff --git a/internal/stats/http.go b/internal/stats/http.go
+index d8e95085..39c8632a 100644
+--- a/internal/stats/http.go
++++ b/internal/stats/http.go
+@@ -233,6 +233,12 @@ func (s *StatsCtx) handleStatsReset(w http.ResponseWriter, r *http.Request) {
+ // initWeb registers the handlers for web endpoints of statistics module.
+ func (s *StatsCtx) initWeb() {
+ 	s.httpReg.Register(http.MethodGet, "/control/stats", s.handleStats)
++	s.httpReg.Register(http.MethodGet, "/control/stats/flow", s.handleStatsFlow)
++	s.httpReg.Register(http.MethodGet, "/control/stats/flow/details", s.handleStatsFlowDetails)
++	s.httpReg.Register(http.MethodGet, "/control/stats/traffic_map", s.handleStatsTrafficMap)
++	s.httpReg.Register(http.MethodGet, "/control/stats/heatmap", s.handleStatsHeatmap)
++	s.httpReg.Register(http.MethodGet, "/control/stats/latency_heatmap", s.handleStatsLatencyHeatmap)
++	s.httpReg.Register(http.MethodGet, "/control/stats/latency_exemplars", s.handleStatsLatencyExemplars)
+ 	s.httpReg.Register(http.MethodPost, "/control/stats_reset", s.handleStatsReset)
+ 	s.httpReg.Register(http.MethodGet, "/control/stats/config", s.handleGetStatsConfig)
+ 	s.httpReg.Register(http.MethodPut, "/control/stats/config/update", s.handlePutStatsConfig)
+diff --git a/internal/stats/stats.go b/internal/stats/stats.go
+index 14efb418..025847f3 100644
+--- a/internal/stats/stats.go
++++ b/internal/stats/stats.go
+@@ -77,6 +77,26 @@ type Config struct {
+ 
+ 	// Enabled tells if the statistics are enabled.
+ 	Enabled bool
++
++	// ClientGroup resolves a client's tag/group name for Flow stage 0.
++	// Optional.
++	ClientGroup func([]string) string
++
++	// ClientName resolves a friendly display name for a client ID or IP.
++	// Optional.
++	ClientName func(string) string
++
++	// QueryLogScanner provides bounded read-only scans of the query log for
++	// analytics.  Optional.
++	QueryLogScanner QueryLogScanner
++
++	// DomainService resolves service ID, name, and category for a domain or
++	// explicit service ID.  Optional.
++	DomainService func(domain, explicitServiceID string) (id, name, category string)
++
++	// FilterListName resolves a human-readable filter list name for a filter ID.
++	// Optional.
++	FilterListName func(id int64, hasFilterList bool, reason string) string
+ }
+ 
+ // Interface is the statistics interface to be used by other packages.
+@@ -144,6 +164,26 @@ type StatsCtx struct {
+ 
+ 	// enabled tells if the statistics are enabled.
+ 	enabled bool
++
++	// clientGroup resolves a client's group/tag name for Flow stage 0.
++	clientGroup func([]string) string
++
++	// clientName resolves a friendly display name for a client ID or IP.
++	clientName func(string) string
++
++	// queryLogScanner runs bounded read-only query log scans for analytics.
++	queryLogScanner QueryLogScanner
++
++	// domainService resolves service ID, name, and category.
++	domainService func(domain, explicitServiceID string) (id, name, category string)
++
++	// filterListName resolves human-readable filter list names.
++	filterListName func(id int64, hasFilterList bool, reason string) string
++
++	// exemplarMu protects exemplars and must never be nested with confMu,
++	// currMu, or bbolt transactions.
++	exemplarMu sync.RWMutex
++	exemplars  *exemplarRing
+ }
+ 
+ // New creates s from conf and properly initializes it.  Don't use s before
+@@ -172,6 +212,12 @@ func New(conf Config) (s *StatsCtx, err error) {
+ 		shouldCountClient: conf.ShouldCountClient,
+ 		limit:             conf.Limit,
+ 		enabled:           conf.Enabled,
++		clientGroup:       conf.ClientGroup,
++		clientName:        conf.ClientName,
++		queryLogScanner:   conf.QueryLogScanner,
++		domainService:     conf.DomainService,
++		filterListName:    conf.FilterListName,
++		exemplars:         newExemplarRing(),
+ 	}
+ 
+ 	if s.unitIDGen = newUnitID; conf.UnitID != nil {
+@@ -272,30 +318,43 @@ func (s *StatsCtx) Close() (err error) {
+ // Update implements the [Interface] interface for *StatsCtx.  e must not be
+ // nil.
+ func (s *StatsCtx) Update(e *Entry) {
+-	s.confMu.Lock()
+-	defer s.confMu.Unlock()
+-
+-	if !s.enabled || s.limit == 0 {
+-		return
++	entry := *e
++	if entry.ClientGroup == "" && s.clientGroup != nil && entry.Client != "" {
++		entry.ClientGroup = s.clientGroup([]string{entry.Client})
+ 	}
+ 
+-	err := e.validate()
+-	if err != nil {
+-		s.logger.Debug("validating entry", slogutil.KeyError, err)
++	var recorded bool
++	func() {
++		s.confMu.Lock()
++		defer s.confMu.Unlock()
+ 
+-		return
+-	}
++		if !s.enabled || s.limit == 0 {
++			return
++		}
+ 
+-	s.currMu.Lock()
+-	defer s.currMu.Unlock()
++		err := entry.validate()
++		if err != nil {
++			s.logger.Debug("validating entry", slogutil.KeyError, err)
+ 
+-	if s.curr == nil {
+-		s.logger.Error("current unit is nil")
++			return
++		}
+ 
+-		return
+-	}
++		s.currMu.Lock()
++		defer s.currMu.Unlock()
+ 
+-	s.curr.add(e)
++		if s.curr == nil {
++			s.logger.Error("current unit is nil")
++
++			return
++		}
++
++		s.curr.add(&entry)
++		recorded = true
++	}()
++
++	if recorded {
++		s.recordExemplar(&entry)
++	}
+ }
+ 
+ // WriteDiskConfig implements the [Interface] interface for *StatsCtx.
+@@ -538,9 +597,14 @@ func (s *StatsCtx) clear() (err error) {
+ 	defer s.logger.Debug("cleared")
+ 
+ 	s.currMu.Lock()
+-	defer s.currMu.Unlock()
+-
+ 	s.curr = newUnit(s.unitIDGen())
++	s.currMu.Unlock()
++
++	s.exemplarMu.Lock()
++	if s.exemplars != nil {
++		s.exemplars.clear()
++	}
++	s.exemplarMu.Unlock()
+ 
+ 	return nil
+ }
+diff --git a/internal/stats/unit.go b/internal/stats/unit.go
+index a8d7a3d6..3a8682a4 100644
+--- a/internal/stats/unit.go
++++ b/internal/stats/unit.go
+@@ -73,6 +73,30 @@ type Entry struct {
+ 	// ProcessingTime is the duration of the request processing from the start
+ 	// of the request including timeouts.
+ 	ProcessingTime time.Duration
++
++	// Timestamp is the request timestamp.  If zero, [time.Now] is used.
++	Timestamp time.Time
++
++	// ClientGroup is the client's primary tag or group for Flow stage 0.
++	ClientGroup string
++
++	// ClientProto is the normalized client protocol ("plain", "doh", "dot",
++	// "doq", "dnscrypt").
++	ClientProto string
++
++	// Status is the normalized resolution decision ("cached", "blocked",
++	// "rewritten", "local", "forwarded", "error").
++	Status string
++
++	// Upstream is the upstream server address used, if any.
++	Upstream string
++
++	// Rcode is the DNS response code name (e.g. "NOERROR", "NXDOMAIN",
++	// "SERVFAIL").
++	Rcode string
++
++	// Cached reports whether the response was served from cache.
++	Cached bool
+ }
+ 
+ // validate returns an error if entry is not valid.
+@@ -126,6 +150,23 @@ type unit struct {
+ 	// timeSum stores the sum of processing time in microseconds of each request
+ 	// written by the unit.
+ 	timeSum uint64
++
++	// minuteTotal and minuteBlocked store per-minute query and blocked counts
++	// within this hour for sub-hour heatmaps.
++	minuteTotal   [60]uint32
++	minuteBlocked [60]uint32
++
++	// Flow joint counters between adjacent diagram stages.
++	flowClientStatus   map[string]uint64
++	flowGroupStatus    map[string]uint64
++	flowProtoStatus    map[string]uint64
++	flowStatusUpstream map[string]uint64
++	flowStatusRcode    map[string]uint64
++	flowUpstreamRcode  map[string]uint64
++
++	// Latency histograms per hour and per minute.
++	latencyHist   map[string]*[numLatencyBuckets]uint32
++	minuteLatency map[minuteKey]*[numLatencyBuckets]uint32
+ }
+ 
+ // newUnit allocates the new *unit.
+@@ -138,6 +179,14 @@ func newUnit(id uint32) (u *unit) {
+ 		upstreamsTimeSum:   map[string]uint64{},
+ 		nResult:            make([]uint64, resultLast),
+ 		id:                 id,
++		flowClientStatus:   map[string]uint64{},
++		flowGroupStatus:    map[string]uint64{},
++		flowProtoStatus:    map[string]uint64{},
++		flowStatusUpstream: map[string]uint64{},
++		flowStatusRcode:    map[string]uint64{},
++		flowUpstreamRcode:  map[string]uint64{},
++		latencyHist:        map[string]*[numLatencyBuckets]uint32{},
++		minuteLatency:      map[minuteKey]*[numLatencyBuckets]uint32{},
+ 	}
+ }
+ 
+@@ -178,6 +227,22 @@ type unitDB struct {
+ 	// TimeAvg is the average of processing times in microseconds of all the
+ 	// requests in the unit.
+ 	TimeAvg uint32
++
++	// MinuteTotal and MinuteBlocked hold per-minute query counts for this hour.
++	MinuteTotal   [60]uint32
++	MinuteBlocked [60]uint32
++
++	// Flow joint counters (GOB backwards-compatible additions).
++	FlowClientStatus   []countPair
++	FlowGroupStatus    []countPair
++	FlowProtoStatus    []countPair
++	FlowStatusUpstream []countPair
++	FlowStatusRcode    []countPair
++	FlowUpstreamRcode  []countPair
++
++	// Latency histograms (GOB backwards-compatible additions).
++	LatencyHist   []latencyHistDB
++	MinuteLatency []minuteLatencyDB
+ }
+ 
+ // newUnitID is the default UnitIDGenFunc that generates the unique id hourly.
+@@ -270,6 +335,16 @@ func (u *unit) serialize() (udb *unitDB) {
+ 		UpstreamsResponses: convertMapToSlice(u.upstreamsResponses, maxUpstreams),
+ 		UpstreamsTimeSum:   convertMapToSlice(u.upstreamsTimeSum, maxUpstreams),
+ 		TimeAvg:            timeAvg,
++		MinuteTotal:        u.minuteTotal,
++		MinuteBlocked:      u.minuteBlocked,
++		FlowClientStatus:   serializeClientStatus(u.flowClientStatus),
++		FlowGroupStatus:    convertMapToSlice(u.flowGroupStatus, maxFlowJointKeys),
++		FlowProtoStatus:    convertMapToSlice(u.flowProtoStatus, maxFlowJointKeys),
++		FlowStatusUpstream: convertMapToSlice(u.flowStatusUpstream, maxFlowJointKeys),
++		FlowStatusRcode:    convertMapToSlice(u.flowStatusRcode, maxFlowJointKeys),
++		FlowUpstreamRcode:  convertMapToSlice(u.flowUpstreamRcode, maxFlowJointKeys),
++		LatencyHist:        serializeLatencyHist(u.latencyHist),
++		MinuteLatency:      serializeMinuteLatency(u.minuteLatency),
+ 	}
+ }
+ 
+@@ -312,6 +387,45 @@ func (u *unit) deserialize(udb *unitDB) {
+ 	u.upstreamsResponses = convertSliceToMap(udb.UpstreamsResponses)
+ 	u.upstreamsTimeSum = convertSliceToMap(udb.UpstreamsTimeSum)
+ 	u.timeSum = uint64(udb.TimeAvg) * udb.NTotal
++	u.minuteTotal = udb.MinuteTotal
++	u.minuteBlocked = udb.MinuteBlocked
++	if len(udb.FlowClientStatus) > 0 {
++		u.flowClientStatus = convertSliceToMap(udb.FlowClientStatus)
++	}
++	if len(udb.FlowGroupStatus) > 0 {
++		u.flowGroupStatus = convertSliceToMap(udb.FlowGroupStatus)
++	}
++	if len(udb.FlowProtoStatus) > 0 {
++		u.flowProtoStatus = convertSliceToMap(udb.FlowProtoStatus)
++	}
++	if len(udb.FlowStatusUpstream) > 0 {
++		u.flowStatusUpstream = convertSliceToMap(udb.FlowStatusUpstream)
++	}
++	if len(udb.FlowStatusRcode) > 0 {
++		u.flowStatusRcode = convertSliceToMap(udb.FlowStatusRcode)
++	}
++	if len(udb.FlowUpstreamRcode) > 0 {
++		u.flowUpstreamRcode = convertSliceToMap(udb.FlowUpstreamRcode)
++	}
++	if len(udb.LatencyHist) > 0 {
++		u.latencyHist = make(map[string]*[numLatencyBuckets]uint32, len(udb.LatencyHist))
++		for _, lh := range udb.LatencyHist {
++			buckets := lh.Buckets
++			u.latencyHist[lh.Key] = &buckets
++		}
++	}
++	if len(udb.MinuteLatency) > 0 {
++		u.minuteLatency = make(map[minuteKey]*[numLatencyBuckets]uint32, len(udb.MinuteLatency))
++		for _, ml := range udb.MinuteLatency {
++			arr := &[numLatencyBuckets]uint32{}
++			for _, bin := range ml.Bins {
++				if int(bin.Bucket) < numLatencyBuckets {
++					arr[bin.Bucket] += bin.Count
++				}
++			}
++			u.minuteLatency[minuteKey{minute: ml.Minute, key: ml.Key}] = arr
++		}
++	}
+ }
+ 
+ // add adds new data to u.  It's safe for concurrent use.
+@@ -328,6 +442,39 @@ func (u *unit) add(e *Entry) {
+ 	u.timeSum += pt
+ 	u.nTotal++
+ 
++	ts := e.Timestamp
++	if ts.IsZero() {
++		ts = time.Now()
++	}
++	minIdx := ts.UTC().Minute()
++	u.minuteTotal[minIdx]++
++	if e.Result != RNotFiltered {
++		u.minuteBlocked[minIdx]++
++	}
++
++	status, upstream, rcode, group, proto, latencyPath := classifyEntryObservability(e)
++	incFlowCounter(&u.flowClientStatus, e.Client+flowSep+status)
++	incFlowCounter(&u.flowGroupStatus, group+flowSep+status)
++	incFlowCounter(&u.flowProtoStatus, proto+flowSep+status)
++	if (status == "forwarded" || status == "error") && upstream != "" {
++		incFlowCounter(&u.flowStatusUpstream, status+flowSep+upstream)
++		if rcode != "" {
++			incFlowCounter(&u.flowUpstreamRcode, upstream+flowSep+rcode)
++		}
++	} else if rcode != "" {
++		incFlowCounter(&u.flowStatusRcode, status+flowSep+rcode)
++	}
++
++	bucket := latencyBucketIndex(pt)
++	pathKey := "path:" + latencyPath
++	incLatencyBucket(&u.latencyHist, pathKey, bucket)
++	incMinuteLatencyBucket(&u.minuteLatency, uint8(minIdx), pathKey, bucket)
++	if upstream != "" && (status == "forwarded" || status == "error") {
++		upKey := "upstream:" + upstream
++		incLatencyBucket(&u.latencyHist, upKey, bucket)
++		incMinuteLatencyBucket(&u.minuteLatency, uint8(minIdx), upKey, bucket)
++	}
++
+ 	for _, s := range e.UpstreamStats {
+ 		if s.IsCached || s.Error != nil {
+ 			continue
+diff --git a/openapi/openapi.yaml b/openapi/openapi.yaml
+index 96ec08ec..9d34b5a0 100644
+--- a/openapi/openapi.yaml
++++ b/openapi/openapi.yaml
+@@ -308,6 +308,432 @@
+                 '$ref': '#/components/schemas/Stats'
+         '400':
+           'description': 'Invalid value of parameter `recent`'
++  '/stats/flow':
++    'get':
++      'tags':
++      - 'stats'
++      'operationId': 'statsFlow'
++      'summary': 'Get 4-stage query flow Sankey graph'
++      'parameters':
++      - 'name': 'window'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++          'enum':
++          - '15m'
++          - '1h'
++          - '6h'
++          - '24h'
++          - '7d'
++          - '30d'
++          - '90d'
++          'default': '24h'
++      - 'name': 'group_by'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++          'enum':
++          - 'client'
++          - 'tag'
++          - 'protocol'
++          'default': 'client'
++      - 'name': 'client'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'tag'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'protocol'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'status'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++          'enum':
++          - 'cached'
++          - 'forwarded'
++          - 'blocked'
++          - 'rewritten'
++          - 'local'
++          - 'error'
++      - 'name': 'upstream'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'rcode'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'domain'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'view'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++          'enum':
++          - 'auto'
++          - 'overview'
++          - 'blocked'
++          - 'content'
++          - 'dns'
++      - 'name': 'category'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'service'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'filter_list'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'reason'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'rule'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'qtype'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      'responses':
++        '200':
++          'description': 'Returns query flow nodes and links'
++          'content':
++            'application/json':
++              'schema':
++                '$ref': '#/components/schemas/StatsFlowResponse'
++        '400':
++          'description': 'Invalid query parameter'
++  '/stats/flow/details':
++    'get':
++      'tags':
++      - 'stats'
++      'operationId': 'statsFlowDetails'
++      'summary': 'Get detailed breakdown for a query flow drill-down filter'
++      'parameters':
++      - 'name': 'window'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++          'enum':
++          - '15m'
++          - '1h'
++          - '6h'
++          - '24h'
++          - '7d'
++          - '30d'
++          - '90d'
++          'default': '24h'
++      - 'name': 'client'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'tag'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'protocol'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'status'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++          'enum':
++          - 'cached'
++          - 'forwarded'
++          - 'blocked'
++          - 'rewritten'
++          - 'local'
++          - 'error'
++      - 'name': 'upstream'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'rcode'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'domain'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'view'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++          'enum':
++          - 'auto'
++          - 'overview'
++          - 'blocked'
++          - 'content'
++          - 'dns'
++      - 'name': 'category'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'service'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'filter_list'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'reason'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'rule'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'qtype'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'limit'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'integer'
++          'minimum': 1
++          'maximum': 200
++          'default': 50
++      'responses':
++        '200':
++          'description': 'Returns drill-down devices, domains, rules, recent matching queries, and hierarchy tuples'
++          'content':
++            'application/json':
++              'schema':
++                '$ref': '#/components/schemas/StatsFlowDetailsResponse'
++        '400':
++          'description': 'Invalid query parameter'
++  '/stats/traffic_map':
++    'get':
++      'tags':
++      - 'stats'
++      'operationId': 'statsTrafficMap'
++      'summary': 'Get allowed and blocked domain counts for traffic treemap'
++      'parameters':
++      - 'name': 'window'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++          'enum':
++          - 'current_hour'
++          - 'prev_hour'
++          - '24h'
++          - '7d'
++          - '30d'
++          'default': 'current_hour'
++      - 'name': 'limit'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'integer'
++          'minimum': 1
++          'maximum': 200
++          'default': 100
++      'responses':
++        '200':
++          'description': 'Returns allowed and blocked top domain items'
++          'content':
++            'application/json':
++              'schema':
++                '$ref': '#/components/schemas/StatsTrafficMapResponse'
++        '400':
++          'description': 'Invalid query parameter'
++  '/stats/heatmap':
++    'get':
++      'tags':
++      - 'stats'
++      'operationId': 'statsHeatmap'
++      'summary': 'Get activity rhythm heatmap grid values'
++      'parameters':
++      - 'name': 'window'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++          'enum':
++          - '24h'
++          - '7d'
++          - '30d'
++          - '90d'
++          'default': '7d'
++      - 'name': 'grain'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++          'enum':
++          - 'minute'
++          - '15m'
++          - 'hour'
++      - 'name': 'kind'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++          'enum':
++          - 'network'
++          - 'client'
++          - 'domain'
++          'default': 'network'
++      - 'name': 'key'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      - 'name': 'measure'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++          'enum':
++          - 'queries'
++          - 'blocked'
++          'default': 'queries'
++      'responses':
++        '200':
++          'description': 'Returns time-slotted heatmap values'
++          'content':
++            'application/json':
++              'schema':
++                '$ref': '#/components/schemas/StatsHeatmapResponse'
++        '400':
++          'description': 'Invalid query parameter'
++  '/stats/latency_heatmap':
++    'get':
++      'tags':
++      - 'stats'
++      'operationId': 'statsLatencyHeatmap'
++      'summary': 'Get latency bucket histogram matrix over time'
++      'parameters':
++      - 'name': 'window'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++          'enum':
++          - '1h'
++          - '6h'
++          - '24h'
++          - '7d'
++          - '30d'
++          'default': '6h'
++      - 'name': 'step'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++          'enum':
++          - 'minute'
++          - 'hour'
++      - 'name': 'by'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++          'enum':
++          - 'path'
++          - 'upstream'
++          'default': 'path'
++      'responses':
++        '200':
++          'description': 'Returns latency histogram series'
++          'content':
++            'application/json':
++              'schema':
++                '$ref': '#/components/schemas/StatsLatencyHeatmapResponse'
++        '400':
++          'description': 'Invalid query parameter'
++  '/stats/latency_exemplars':
++    'get':
++      'tags':
++      - 'stats'
++      'operationId': 'statsLatencyExemplars'
++      'summary': 'Get recent sampled latency exemplar queries'
++      'parameters':
++      - 'name': 'window'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++          'enum':
++          - '1h'
++          - '6h'
++          - '24h'
++          'default': '6h'
++      - 'name': 'path'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++          'enum':
++          - 'cache'
++          - 'upstream'
++          - 'local'
++          - 'blocked'
++      - 'name': 'upstream'
++        'in': 'query'
++        'required': false
++        'schema':
++          'type': 'string'
++      'responses':
++        '200':
++          'description': 'Returns sampled latency exemplars'
++          'content':
++            'application/json':
++              'schema':
++                '$ref': '#/components/schemas/StatsLatencyExemplarsResponse'
++        '400':
++          'description': 'Invalid query parameter'
+   '/stats_reset':
+     'post':
+       'tags':
+@@ -1782,6 +2208,455 @@
+             statistics.
+     'PutStatsConfigUpdateRequest':
+       '$ref': '#/components/schemas/GetStatsConfigResponse'
++    'StatsFlowNode':
++      'type': 'object'
++      'required':
++      - 'id'
++      - 'stage'
++      - 'name'
++      - 'label'
++      - 'count'
++      - 'dead_end'
++      'properties':
++        'id':
++          'type': 'string'
++        'stage':
++          'type': 'string'
++          'enum':
++          - 'group'
++          - 'client'
++          - 'status'
++          - 'reason'
++          - 'filter_list'
++          - 'rule'
++          - 'category'
++          - 'service'
++          - 'domain'
++          - 'qtype'
++          - 'upstream'
++          - 'rcode'
++        'name':
++          'type': 'string'
++        'label':
++          'type': 'string'
++        'count':
++          'type': 'integer'
++        'dead_end':
++          'type': 'integer'
++    'StatsFlowLink':
++      'type': 'object'
++      'required':
++      - 'source'
++      - 'target'
++      - 'count'
++      - 'failure'
++      'properties':
++        'source':
++          'type': 'string'
++        'target':
++          'type': 'string'
++        'count':
++          'type': 'integer'
++        'failure':
++          'type': 'boolean'
++    'StatsFlowResponse':
++      'type': 'object'
++      'required':
++      - 'from'
++      - 'to'
++      - 'source'
++      - 'group_by'
++      - 'total'
++      - 'nodes'
++      - 'links'
++      - 'partial'
++      - 'truncated'
++      'properties':
++        'from':
++          'type': 'string'
++        'to':
++          'type': 'string'
++        'source':
++          'type': 'string'
++          'enum':
++          - 'buckets'
++          - 'querylog'
++        'group_by':
++          'type': 'string'
++          'enum':
++          - 'client'
++          - 'tag'
++          - 'protocol'
++        'view':
++          'type': 'string'
++        'stages':
++          'type': 'array'
++          'items':
++            'type': 'string'
++        'client':
++          'type': 'string'
++        'total':
++          'type': 'integer'
++        'nodes':
++          'type': 'array'
++          'items':
++            '$ref': '#/components/schemas/StatsFlowNode'
++        'links':
++          'type': 'array'
++          'items':
++            '$ref': '#/components/schemas/StatsFlowLink'
++        'partial':
++          'type': 'boolean'
++        'truncated':
++          'type': 'boolean'
++    'StatsFlowDetailsClient':
++      'type': 'object'
++      'required':
++      - 'id'
++      - 'label'
++      - 'count'
++      - 'blocked'
++      'properties':
++        'id':
++          'type': 'string'
++        'label':
++          'type': 'string'
++        'tag':
++          'type': 'string'
++        'count':
++          'type': 'integer'
++        'blocked':
++          'type': 'integer'
++    'StatsFlowDetailsDomain':
++      'type': 'object'
++      'required':
++      - 'domain'
++      - 'count'
++      - 'blocked'
++      - 'clients'
++      'properties':
++        'domain':
++          'type': 'string'
++        'count':
++          'type': 'integer'
++        'blocked':
++          'type': 'integer'
++        'reason':
++          'type': 'string'
++        'rule':
++          'type': 'string'
++        'service':
++          'type': 'string'
++        'service_name':
++          'type': 'string'
++        'category':
++          'type': 'string'
++        'filter_list':
++          'type': 'string'
++        'qtypes':
++          'type': 'array'
++          'items':
++            'type': 'string'
++        'clients':
++          'type': 'integer'
++    'StatsFlowDetailsRule':
++      'type': 'object'
++      'required':
++      - 'rule'
++      - 'count'
++      'properties':
++        'rule':
++          'type': 'string'
++        'reason':
++          'type': 'string'
++        'filter_list':
++          'type': 'string'
++        'count':
++          'type': 'integer'
++    'StatsFlowDetailsQuery':
++      'type': 'object'
++      'required':
++      - 'time'
++      - 'domain'
++      - 'client'
++      - 'status'
++      - 'latency_us'
++      'properties':
++        'time':
++          'type': 'string'
++        'domain':
++          'type': 'string'
++        'client':
++          'type': 'string'
++        'client_name':
++          'type': 'string'
++        'qtype':
++          'type': 'string'
++        'status':
++          'type': 'string'
++        'reason':
++          'type': 'string'
++        'rule':
++          'type': 'string'
++        'service':
++          'type': 'string'
++        'service_name':
++          'type': 'string'
++        'category':
++          'type': 'string'
++        'filter_list':
++          'type': 'string'
++        'upstream':
++          'type': 'string'
++        'rcode':
++          'type': 'string'
++        'latency_us':
++          'type': 'integer'
++    'StatsFlowDetailsTuple':
++      'type': 'object'
++      'required':
++      - 'client_id'
++      - 'client_label'
++      - 'service_id'
++      - 'service_name'
++      - 'category'
++      - 'domain'
++      - 'filter_list'
++      - 'qtype'
++      - 'status'
++      - 'count'
++      - 'blocked'
++      'properties':
++        'client_id':
++          'type': 'string'
++        'client_label':
++          'type': 'string'
++        'tag':
++          'type': 'string'
++        'service_id':
++          'type': 'string'
++        'service_name':
++          'type': 'string'
++        'category':
++          'type': 'string'
++        'domain':
++          'type': 'string'
++        'filter_list':
++          'type': 'string'
++        'reason':
++          'type': 'string'
++        'rule':
++          'type': 'string'
++        'qtype':
++          'type': 'string'
++        'status':
++          'type': 'string'
++        'count':
++          'type': 'integer'
++        'blocked':
++          'type': 'integer'
++    'StatsFlowDetailsResponse':
++      'type': 'object'
++      'required':
++      - 'from'
++      - 'to'
++      - 'total'
++      - 'blocked'
++      - 'truncated'
++      - 'clients'
++      - 'domains'
++      - 'rules'
++      - 'recent'
++      - 'tuples'
++      'properties':
++        'from':
++          'type': 'string'
++        'to':
++          'type': 'string'
++        'total':
++          'type': 'integer'
++        'blocked':
++          'type': 'integer'
++        'truncated':
++          'type': 'boolean'
++        'clients':
++          'type': 'array'
++          'items':
++            '$ref': '#/components/schemas/StatsFlowDetailsClient'
++        'domains':
++          'type': 'array'
++          'items':
++            '$ref': '#/components/schemas/StatsFlowDetailsDomain'
++        'rules':
++          'type': 'array'
++          'items':
++            '$ref': '#/components/schemas/StatsFlowDetailsRule'
++        'recent':
++          'type': 'array'
++          'items':
++            '$ref': '#/components/schemas/StatsFlowDetailsQuery'
++        'tuples':
++          'type': 'array'
++          'items':
++            '$ref': '#/components/schemas/StatsFlowDetailsTuple'
++    'StatsTrafficMapItem':
++      'type': 'object'
++      'required':
++      - 'domain'
++      - 'count'
++      'properties':
++        'domain':
++          'type': 'string'
++        'count':
++          'type': 'integer'
++    'StatsTrafficMapResponse':
++      'type': 'object'
++      'required':
++      - 'from'
++      - 'to'
++      - 'window'
++      - 'allowed'
++      - 'blocked'
++      'properties':
++        'from':
++          'type': 'string'
++        'to':
++          'type': 'string'
++        'window':
++          'type': 'string'
++        'allowed':
++          'type': 'array'
++          'items':
++            '$ref': '#/components/schemas/StatsTrafficMapItem'
++        'blocked':
++          'type': 'array'
++          'items':
++            '$ref': '#/components/schemas/StatsTrafficMapItem'
++    'StatsHeatmapResponse':
++      'type': 'object'
++      'required':
++      - 'from'
++      - 'to'
++      - 'grain'
++      - 'kind'
++      - 'measure'
++      - 'slot_seconds'
++      - 'precision'
++      - 'starts'
++      - 'values'
++      - 'covered'
++      - 'partial'
++      - 'truncated'
++      'properties':
++        'from':
++          'type': 'string'
++        'to':
++          'type': 'string'
++        'grain':
++          'type': 'string'
++        'kind':
++          'type': 'string'
++        'key':
++          'type': 'string'
++        'measure':
++          'type': 'string'
++        'slot_seconds':
++          'type': 'integer'
++        'precision':
++          'type': 'string'
++          'enum':
++          - 'exact'
++          - 'top_list'
++          - 'querylog'
++        'starts':
++          'type': 'array'
++          'items':
++            'type': 'integer'
++        'values':
++          'type': 'array'
++          'items':
++            'type': 'integer'
++        'covered':
++          'type': 'array'
++          'items':
++            'type': 'boolean'
++        'partial':
++          'type': 'boolean'
++        'truncated':
++          'type': 'boolean'
++    'StatsLatencyHeatmapResponse':
++      'type': 'object'
++      'required':
++      - 'from'
++      - 'to'
++      - 'step'
++      - 'by'
++      - 'bounds_us'
++      - 'starts'
++      - 'series'
++      - 'partial'
++      'properties':
++        'from':
++          'type': 'string'
++        'to':
++          'type': 'string'
++        'step':
++          'type': 'string'
++        'by':
++          'type': 'string'
++        'bounds_us':
++          'type': 'array'
++          'items':
++            'type': 'integer'
++        'starts':
++          'type': 'array'
++          'items':
++            'type': 'integer'
++        'series':
++          'type': 'object'
++          'additionalProperties':
++            'type': 'array'
++            'items':
++              'type': 'array'
++              'items':
++                'type': 'integer'
++        'partial':
++          'type': 'boolean'
++    'StatsLatencyExemplar':
++      'type': 'object'
++      'required':
++      - 'time'
++      - 'ts_unix_micros'
++      - 'latency_us'
++      - 'path'
++      - 'domain'
++      - 'client'
++      'properties':
++        'time':
++          'type': 'string'
++        'ts_unix_micros':
++          'type': 'integer'
++        'latency_us':
++          'type': 'integer'
++        'path':
++          'type': 'string'
++        'upstream':
++          'type': 'string'
++        'domain':
++          'type': 'string'
++        'client':
++          'type': 'string'
++        'rcode':
++          'type': 'string'
++    'StatsLatencyExemplarsResponse':
++      'type': 'object'
++      'required':
++      - 'items'
++      'properties':
++        'items':
++          'type': 'array'
++          'items':
++            '$ref': '#/components/schemas/StatsLatencyExemplar'
+     'DhcpConfig':
+       'type': 'object'
+       'properties':

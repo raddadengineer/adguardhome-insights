@@ -1,0 +1,5 @@
+*
+!dist/
+!dist/insights/
+!dist/insights/docker/
+!dist/insights/docker/AdGuardHome_*

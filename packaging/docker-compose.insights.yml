@@ -1,0 +1,29 @@
+# Drop-in Docker Compose overlay to pull and run AdGuard Home Insights from
+# GitHub Container Registry without cloning the repository.
+#
+# Usage (from your Compose directory):
+#   docker compose -f compose.yml -f docker-compose.insights.yml pull
+#   docker compose -f compose.yml -f docker-compose.insights.yml up -d
+#
+# Volume permissions note:
+#   This image runs unprivileged as nobody:nogroup (65534:65534). If your
+#   existing ./conf and ./work host mounts are root-owned, either migrate them:
+#     sudo chown -R 65534:65534 ./conf ./work
+#   or override the container user temporarily in your local Compose override:
+#     user: "0:0"
+#
+# To build from local source instead of pulling from GHCR, use
+# packaging/docker-compose.build.yml from this repository.
+
+services:
+  adguardhome:
+    image: ghcr.io/raddadengineer/adguardhome-insights/adguardhome:latest
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M

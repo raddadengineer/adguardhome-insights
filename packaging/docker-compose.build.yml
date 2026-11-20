@@ -1,0 +1,22 @@
+# Local source-build Docker Compose override for AdGuard Home Insights.
+#
+# Usage (from the repository root or adjusting paths to your compose.yml):
+#   docker compose -f /path/to/compose.yml -f packaging/docker-compose.build.yml up -d --build
+
+services:
+  adguardhome:
+    image: adguardhome-insights:local
+    build:
+      context: ..
+      dockerfile: packaging/Dockerfile
+      args:
+        VERSION: v0.1.0+insights.local
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M

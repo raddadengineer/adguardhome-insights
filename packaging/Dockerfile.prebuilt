@@ -1,0 +1,50 @@
+# Minimal runtime image wrapping prebuilt cross-compiled Insights binaries from
+# scripts/build-insights-bundle.sh.
+
+FROM alpine:3.23
+
+ARG DIST_DIR=dist/insights
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETVARIANT
+
+LABEL \
+	org.opencontainers.image.description="AdGuard Home with Telltale Insights overlay (prebuilt)" \
+	org.opencontainers.image.licenses="GPL-3.0" \
+	org.opencontainers.image.source="https://github.com/raddadengineer/adguardhome-insights" \
+	org.opencontainers.image.title="AdGuard Home Insights"
+
+RUN apk --no-cache add ca-certificates libcap tzdata && \
+	mkdir -p /opt/adguardhome/conf /opt/adguardhome/work && \
+	chown -R nobody:nogroup /opt/adguardhome
+
+COPY \
+	--chmod=0755 \
+	--chown=nobody:nogroup \
+	./${DIST_DIR}/docker/AdGuardHome_${TARGETOS}_${TARGETARCH}_${TARGETVARIANT} \
+	/opt/adguardhome/AdGuardHome
+
+RUN setcap 'cap_net_bind_service=+eip' /opt/adguardhome/AdGuardHome
+
+EXPOSE \
+	53/tcp 53/udp \
+	67/udp \
+	68/udp \
+	80/tcp \
+	443/tcp 443/udp \
+	853/tcp 853/udp \
+	3000/tcp 3000/udp \
+	5443/tcp 5443/udp
+
+USER nobody:nogroup
+WORKDIR /opt/adguardhome/work
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+	CMD pidof AdGuardHome >/dev/null || exit 1
+
+ENTRYPOINT ["/opt/adguardhome/AdGuardHome"]
+CMD [ \
+	"--no-check-update", \
+	"-c", "/opt/adguardhome/conf/AdGuardHome.yaml", \
+	"-w", "/opt/adguardhome/work" \
+]
