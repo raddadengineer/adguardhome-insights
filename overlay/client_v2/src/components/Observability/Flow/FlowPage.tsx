@@ -53,6 +53,7 @@ import {
     DEFAULT_FLOW_VIEWPORT,
     foldFlow,
     layoutSankey,
+    getViewportPanBounds,
     clampViewport,
     zoomViewportAt,
     panViewport,
@@ -227,9 +228,25 @@ export const FlowPage = () => {
     const [tipPos, setTipPos] = createSignal<{ x: number; y: number } | null>(null);
 
     let wrapEl: HTMLDivElement | undefined;
-    let svgViewportEl: HTMLDivElement | undefined;
-    let dragState: { startX: number; startY: number; origin: FlowViewport } | null = null;
+    const [viewportEl, setViewportEl] = createSignal<HTMLDivElement | null>(null);
+    const activePointers = new Map<number, { x: number; y: number }>();
+    let dragState: {
+        pointerId: number;
+        startX: number;
+        startY: number;
+        origin: FlowViewport;
+        moved: boolean;
+    } | null = null;
+    let pinchState: {
+        startDist: number;
+        startMidSvgX: number;
+        startMidSvgY: number;
+        origin: FlowViewport;
+        moved: boolean;
+    } | null = null;
     let suppressNextClick = false;
+    let suppressClickTimer: number | undefined;
+    let windowPointerAttached = false;
     let observer: ResizeObserver | undefined;
 
     createEffect(() => {
@@ -502,6 +519,8 @@ export const FlowPage = () => {
         setViewport(DEFAULT_FLOW_VIEWPORT);
         setIsPanning(false);
         dragState = null;
+        pinchState = null;
+        activePointers.clear();
     });
 
     createEffect(() => {
@@ -509,6 +528,41 @@ export const FlowPage = () => {
         const h = diagramHeight();
         setViewport((prev) => clampViewport(prev, w, h));
     });
+
+    const panBounds = createMemo(() =>
+        getViewportPanBounds(viewport().scale, svgWidth(), diagramHeight()),
+    );
+
+    const hScroll = createMemo(() => {
+        const bounds = panBounds();
+        const w = svgWidth();
+        const range = bounds.maxX - bounds.minX;
+        if (viewport().scale <= 1 || range <= 0) {
+            return { frac: 0, offsetPct: 0, sizePct: 100 };
+        }
+        const sizePct = Math.max(15, Math.min(92, (w / (w + range)) * 100));
+        const frac = Math.max(0, Math.min(1, (bounds.maxX - viewport().tx) / range));
+        return { frac, offsetPct: frac * (100 - sizePct), sizePct };
+    });
+
+    const vScroll = createMemo(() => {
+        const bounds = panBounds();
+        const h = diagramHeight();
+        const range = bounds.maxY - bounds.minY;
+        if (viewport().scale <= 1 || range <= 0) {
+            return { frac: 0, offsetPct: 0, sizePct: 100 };
+        }
+        const sizePct = Math.max(15, Math.min(92, (h / (h + range)) * 100));
+        const frac = Math.max(0, Math.min(1, (bounds.maxY - viewport().ty) / range));
+        return { frac, offsetPct: frac * (100 - sizePct), sizePct };
+    });
+
+    const getSvgCoordScale = () => {
+        const rect = viewportEl()?.getBoundingClientRect();
+        const scaleX = rect && rect.width > 0 ? svgWidth() / rect.width : 1;
+        const scaleY = rect && rect.height > 0 ? diagramHeight() / rect.height : 1;
+        return { scaleX, scaleY, rect };
+    };
 
     const zoomBy = (factor: number) => {
         const w = svgWidth();
@@ -518,86 +572,364 @@ export const FlowPage = () => {
         );
     };
 
+    const clearSuppressClick = () => {
+        if (suppressClickTimer !== undefined) {
+            window.clearTimeout(suppressClickTimer);
+            suppressClickTimer = undefined;
+        }
+        suppressNextClick = false;
+    };
+
+    const armSuppressClick = () => {
+        if (suppressClickTimer !== undefined) {
+            window.clearTimeout(suppressClickTimer);
+        }
+        suppressNextClick = true;
+        suppressClickTimer = window.setTimeout(() => {
+            suppressNextClick = false;
+            suppressClickTimer = undefined;
+        }, 0);
+    };
+
+    const detachWindowPointerListeners = () => {
+        if (!windowPointerAttached) {
+            return;
+        }
+        window.removeEventListener('pointermove', handleWindowPointerMove);
+        window.removeEventListener('pointerup', handleWindowPointerEnd);
+        window.removeEventListener('pointercancel', handleWindowPointerEnd);
+        windowPointerAttached = false;
+    };
+
+    const attachWindowPointerListeners = () => {
+        if (windowPointerAttached) {
+            return;
+        }
+        window.addEventListener('pointermove', handleWindowPointerMove);
+        window.addEventListener('pointerup', handleWindowPointerEnd);
+        window.addEventListener('pointercancel', handleWindowPointerEnd);
+        windowPointerAttached = true;
+    };
+
     const resetZoom = () => {
         setViewport(DEFAULT_FLOW_VIEWPORT);
         setIsPanning(false);
         dragState = null;
+        pinchState = null;
+        activePointers.clear();
+        detachWindowPointerListeners();
+        clearSuppressClick();
     };
 
     const handleWheel = (e: WheelEvent) => {
-        if (!e.ctrlKey && !e.metaKey) {
-            return;
-        }
-        if (e.cancelable) {
-            e.preventDefault();
-        }
         const w = svgWidth();
         const h = diagramHeight();
-        const rect = svgViewportEl?.getBoundingClientRect();
-        const anchorX = rect && rect.width > 0 ? e.clientX - rect.left : w / 2;
-        const anchorY = rect && rect.height > 0 ? e.clientY - rect.top : h / 2;
-        const rawFactor = Math.exp(-e.deltaY * 0.008);
-        const factor = Math.max(0.65, Math.min(1.5, rawFactor));
+        const { scaleX, scaleY, rect } = getSvgCoordScale();
 
-        setViewport((prev) =>
-            zoomViewportAt(prev, prev.scale * factor, anchorX, anchorY, w, h),
-        );
+        if (e.ctrlKey || e.metaKey) {
+            if (e.cancelable) {
+                e.preventDefault();
+            }
+            const anchorX = rect && rect.width > 0 ? (e.clientX - rect.left) * scaleX : w / 2;
+            const anchorY = rect && rect.height > 0 ? (e.clientY - rect.top) * scaleY : h / 2;
+            const rawFactor = Math.exp(-e.deltaY * 0.008);
+            const factor = Math.max(0.65, Math.min(1.5, rawFactor));
+
+            setViewport((prev) =>
+                zoomViewportAt(prev, prev.scale * factor, anchorX, anchorY, w, h),
+            );
+            return;
+        }
+
+        const prev = viewport();
+        if (prev.scale <= 1) {
+            return;
+        }
+
+        const modeMult = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? h : 1;
+        let dx = e.deltaX * modeMult;
+        let dy = e.deltaY * modeMult;
+        if (e.shiftKey && dx === 0 && dy !== 0) {
+            dx = dy;
+            dy = 0;
+        }
+        if (dx === 0 && dy === 0) {
+            return;
+        }
+
+        const next = panViewport(prev, -dx * scaleX, -dy * scaleY, w, h);
+        const moved = next.tx !== prev.tx || next.ty !== prev.ty;
+        const isHorizontalIntent = Math.abs(dx) > Math.abs(dy) || e.shiftKey;
+
+        if ((moved || isHorizontalIntent) && e.cancelable) {
+            e.preventDefault();
+        }
+        if (moved) {
+            setTipPos(null);
+            setViewport(next);
+        }
+    };
+
+    const handleWindowPointerMove = (e: PointerEvent) => {
+        const pid = e.pointerId ?? 0;
+        if (!activePointers.has(pid)) {
+            return;
+        }
+        activePointers.set(pid, { x: e.clientX, y: e.clientY });
+
+        const { scaleX, scaleY, rect } = getSvgCoordScale();
+        const w = svgWidth();
+        const h = diagramHeight();
+
+        if (pinchState && activePointers.size >= 2) {
+            const pts = [...activePointers.values()];
+            const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+            const midClientX = (pts[0].x + pts[1].x) / 2;
+            const midClientY = (pts[0].y + pts[1].y) / 2;
+            const midSvgX = rect && rect.width > 0 ? (midClientX - rect.left) * scaleX : midClientX;
+            const midSvgY = rect && rect.height > 0 ? (midClientY - rect.top) * scaleY : midClientY;
+
+            if (pinchState.startDist > 0) {
+                const zoomed = zoomViewportAt(
+                    pinchState.origin,
+                    pinchState.origin.scale * (dist / pinchState.startDist),
+                    pinchState.startMidSvgX,
+                    pinchState.startMidSvgY,
+                    w,
+                    h,
+                );
+                const shifted = clampViewport(
+                    {
+                        scale: zoomed.scale,
+                        tx: zoomed.tx + (midSvgX - pinchState.startMidSvgX),
+                        ty: zoomed.ty + (midSvgY - pinchState.startMidSvgY),
+                    },
+                    w,
+                    h,
+                );
+                pinchState.moved = true;
+                setViewport(shifted);
+            }
+            return;
+        }
+
+        if (!dragState || dragState.pointerId !== pid) {
+            return;
+        }
+
+        const dx = e.clientX - dragState.startX;
+        const dy = e.clientY - dragState.startY;
+        if (!dragState.moved && Math.hypot(dx, dy) > 4) {
+            dragState.moved = true;
+            setIsPanning(true);
+            setHoverNodeId(null);
+            setHoverLink(null);
+            setTipPos(null);
+            const el = viewportEl();
+            if (el?.setPointerCapture) {
+                try {
+                    el.setPointerCapture(pid);
+                } catch {
+                    // Ignore synthetic pointer ids in unit tests.
+                }
+            }
+        }
+        if (dragState.moved) {
+            setViewport(panViewport(dragState.origin, dx * scaleX, dy * scaleY, w, h));
+        }
+    };
+
+    const handleWindowPointerEnd = (e: PointerEvent) => {
+        const pid = e.pointerId ?? 0;
+        const wasTracked = activePointers.delete(pid);
+        if (!wasTracked && !dragState && !pinchState) {
+            return;
+        }
+
+        const wasMoved = Boolean(dragState?.moved || pinchState?.moved);
+        if (dragState?.moved) {
+            const el = viewportEl();
+            if (el?.releasePointerCapture) {
+                try {
+                    el.releasePointerCapture(dragState.pointerId);
+                } catch {
+                    // Ignore if pointer capture is not active.
+                }
+            }
+        }
+        if (wasMoved) {
+            armSuppressClick();
+        }
+
+        if (activePointers.size < 2) {
+            pinchState = null;
+        }
+        if (!dragState || dragState.pointerId === pid || activePointers.size === 0) {
+            dragState = null;
+        }
+        if (activePointers.size === 0) {
+            setIsPanning(false);
+            detachWindowPointerListeners();
+        }
     };
 
     const handlePointerDown = (e: PointerEvent) => {
-        if (e.button !== 0 || viewport().scale <= 1) {
+        const target = e.target as HTMLElement | null;
+        if (target?.closest('[data-pan-scrollbar="true"]')) {
             return;
         }
-        dragState = {
-            startX: e.clientX,
-            startY: e.clientY,
-            origin: viewport(),
-        };
-        suppressNextClick = false;
-        const target = e.currentTarget as HTMLElement | null;
-        if (target?.setPointerCapture) {
-            try {
-                target.setPointerCapture(e.pointerId);
-            } catch {
-                // Ignore synthetic pointer ids in unit tests.
-            }
+        const btn = e.button ?? 0;
+        if (btn !== 0 && btn !== 1) {
+            return;
         }
-    };
+        if (btn === 1 && e.cancelable) {
+            e.preventDefault();
+        }
 
-    const handlePointerMove = (e: PointerEvent) => {
-        if (!dragState) {
-            return;
-        }
-        const dx = e.clientX - dragState.startX;
-        const dy = e.clientY - dragState.startY;
-        if (Math.hypot(dx, dy) > 4) {
-            suppressNextClick = true;
+        const pid = e.pointerId ?? 0;
+        activePointers.set(pid, { x: e.clientX, y: e.clientY });
+        attachWindowPointerListeners();
+
+        if (activePointers.size === 2) {
+            const pts = [...activePointers.values()];
+            const { scaleX, scaleY, rect } = getSvgCoordScale();
+            const midClientX = (pts[0].x + pts[1].x) / 2;
+            const midClientY = (pts[0].y + pts[1].y) / 2;
+            pinchState = {
+                startDist: Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y),
+                startMidSvgX: rect && rect.width > 0 ? (midClientX - rect.left) * scaleX : midClientX,
+                startMidSvgY: rect && rect.height > 0 ? (midClientY - rect.top) * scaleY : midClientY,
+                origin: viewport(),
+                moved: false,
+            };
+            dragState = null;
             setIsPanning(true);
+            setHoverNodeId(null);
+            setHoverLink(null);
             setTipPos(null);
+            return;
         }
-        if (suppressNextClick) {
-            setViewport(panViewport(dragState.origin, dx, dy, svgWidth(), diagramHeight()));
+
+        if (activePointers.size === 1 && viewport().scale > 1) {
+            clearSuppressClick();
+            dragState = {
+                pointerId: pid,
+                startX: e.clientX,
+                startY: e.clientY,
+                origin: viewport(),
+                moved: false,
+            };
         }
     };
 
-    const handlePointerEnd = (e: PointerEvent) => {
-        if (!dragState) {
+    const handleViewportClickCapture = (e: MouseEvent) => {
+        if (!suppressNextClick) {
             return;
         }
-        dragState = null;
-        setIsPanning(false);
-        const target = e.currentTarget as HTMLElement | null;
-        if (target?.releasePointerCapture) {
-            try {
-                target.releasePointerCapture(e.pointerId);
-            } catch {
-                // Ignore if pointer capture is not active.
-            }
-        }
+        e.preventDefault();
+        e.stopPropagation();
+        clearSuppressClick();
     };
+
+    const handleScrollbarPointerDown = (axis: 'x' | 'y', e: PointerEvent) => {
+        if ((e.button ?? 0) !== 0) {
+            return;
+        }
+        e.stopPropagation();
+        if (e.cancelable) {
+            e.preventDefault();
+        }
+        const trackEl = e.currentTarget as HTMLDivElement;
+        const rect = trackEl.getBoundingClientRect();
+        const bounds = panBounds();
+        const vp = viewport();
+        const range = axis === 'x' ? bounds.maxX - bounds.minX : bounds.maxY - bounds.minY;
+        const trackLen = axis === 'x' ? rect.width : rect.height;
+        const sizePct = axis === 'x' ? hScroll().sizePct : vScroll().sizePct;
+        const availablePx = trackLen * (1 - sizePct / 100);
+        if (range <= 0 || availablePx <= 0) {
+            return;
+        }
+
+        const thumbEl = trackEl.firstElementChild as HTMLElement | null;
+        const clickedThumb = Boolean(thumbEl?.contains(e.target as Node));
+        const startCoord = axis === 'x' ? e.clientX : e.clientY;
+        let originOffset = axis === 'x' ? vp.tx : vp.ty;
+
+        if (!clickedThumb) {
+            const clickFrac = Math.max(
+                0,
+                Math.min(1, (startCoord - (axis === 'x' ? rect.left : rect.top)) / trackLen),
+            );
+            const thumbFrac = sizePct / 100;
+            const norm = Math.max(
+                0,
+                Math.min(1, (clickFrac - thumbFrac / 2) / (1 - thumbFrac)),
+            );
+            const jumped = (axis === 'x' ? bounds.maxX : bounds.maxY) - norm * range;
+            originOffset = jumped;
+            setViewport((prev) =>
+                clampViewport(
+                    axis === 'x'
+                        ? { ...prev, tx: jumped }
+                        : { ...prev, ty: jumped },
+                    svgWidth(),
+                    diagramHeight(),
+                ),
+            );
+        }
+
+        const pid = e.pointerId ?? 0;
+        const onMove = (ev: PointerEvent) => {
+            if ((ev.pointerId ?? 0) !== pid) {
+                return;
+            }
+            const cur = axis === 'x' ? ev.clientX : ev.clientY;
+            const nextOffset = originOffset - ((cur - startCoord) / availablePx) * range;
+            setViewport((prev) =>
+                clampViewport(
+                    axis === 'x'
+                        ? { ...prev, tx: nextOffset }
+                        : { ...prev, ty: nextOffset },
+                    svgWidth(),
+                    diagramHeight(),
+                ),
+            );
+        };
+        const onUp = (ev: PointerEvent) => {
+            if ((ev.pointerId ?? 0) !== pid) {
+                return;
+            }
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+            window.removeEventListener('pointercancel', onUp);
+        };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
+    };
+
+    createEffect(() => {
+        const el = viewportEl();
+        if (!el) {
+            return;
+        }
+        el.addEventListener('wheel', handleWheel, { passive: false });
+        el.addEventListener('click', handleViewportClickCapture, true);
+        onCleanup(() => {
+            el.removeEventListener('wheel', handleWheel);
+            el.removeEventListener('click', handleViewportClickCapture, true);
+        });
+    });
+
+    onCleanup(() => {
+        detachWindowPointerListeners();
+        clearSuppressClick();
+    });
 
     const handleViewportKeyDown = (e: KeyboardEvent) => {
-        if (e.target !== svgViewportEl) {
+        const el = viewportEl();
+        if (!el?.contains(e.target as Node)) {
             return;
         }
         const step = 48;
@@ -900,7 +1232,7 @@ export const FlowPage = () => {
     };
 
     const updateTip = (e: MouseEvent) => {
-        if (!wrapEl) return;
+        if (isPanning() || !wrapEl) return;
         const rect = wrapEl.getBoundingClientRect();
         setTipPos({
             x: Math.min(rect.width - 260, Math.max(8, e.clientX - rect.left + 12)),
@@ -1568,18 +1900,15 @@ export const FlowPage = () => {
 
                                 <div class={s.svgContainer}>
                                     <div
-                                        ref={svgViewportEl}
+                                        ref={setViewportEl}
                                         class={cn(s.svgViewport, {
                                             [s.svgPannable]: viewport().scale > 1,
                                             [s.svgPanning]: isPanning(),
                                         })}
                                         tabIndex={0}
                                         data-testid="flow-svg-viewport"
-                                        onWheel={handleWheel}
                                         onPointerDown={handlePointerDown}
-                                        onPointerMove={handlePointerMove}
-                                        onPointerUp={handlePointerEnd}
-                                        onPointerCancel={handlePointerEnd}
+                                        onDragStart={(e) => e.preventDefault()}
                                         onKeyDown={handleViewportKeyDown}
                                     >
                                         <svg
@@ -1644,12 +1973,14 @@ export const FlowPage = () => {
                                                                 }
                                                             }}
                                                             onMouseEnter={(e) => {
+                                                                if (isPanning()) return;
                                                                 setHoverLink(link);
                                                                 setHoverNodeId(null);
                                                                 updateTip(e);
                                                             }}
                                                             onMouseMove={updateTip}
                                                             onMouseLeave={() => {
+                                                                if (isPanning()) return;
                                                                 setHoverLink(null);
                                                                 setTipPos(null);
                                                             }}
@@ -1707,12 +2038,14 @@ export const FlowPage = () => {
                                                                 }
                                                             }}
                                                             onMouseEnter={(e) => {
+                                                                if (isPanning()) return;
                                                                 setHoverNodeId(node.id);
                                                                 setHoverLink(null);
                                                                 updateTip(e);
                                                             }}
                                                             onMouseMove={updateTip}
                                                             onMouseLeave={() => {
+                                                                if (isPanning()) return;
                                                                 setHoverNodeId(null);
                                                                 setTipPos(null);
                                                             }}
@@ -1744,6 +2077,48 @@ export const FlowPage = () => {
                                             </For>
                                         </g>
                                     </svg>
+                                    <Show when={viewport().scale > 1}>
+                                        <div
+                                            class={s.panTrackX}
+                                            data-testid="flow-pan-x"
+                                            data-pan-scrollbar="true"
+                                            role="scrollbar"
+                                            aria-orientation="horizontal"
+                                            aria-label={intl.getMessage('obs_pan_horizontal_aria')}
+                                            aria-valuemin={0}
+                                            aria-valuemax={100}
+                                            aria-valuenow={Math.round(hScroll().frac * 100)}
+                                            onPointerDown={(e) => handleScrollbarPointerDown('x', e)}
+                                        >
+                                            <div
+                                                class={s.panThumbX}
+                                                style={{
+                                                    left: `${hScroll().offsetPct}%`,
+                                                    width: `${hScroll().sizePct}%`,
+                                                }}
+                                            />
+                                        </div>
+                                        <div
+                                            class={s.panTrackY}
+                                            data-testid="flow-pan-y"
+                                            data-pan-scrollbar="true"
+                                            role="scrollbar"
+                                            aria-orientation="vertical"
+                                            aria-label={intl.getMessage('obs_pan_vertical_aria')}
+                                            aria-valuemin={0}
+                                            aria-valuemax={100}
+                                            aria-valuenow={Math.round(vScroll().frac * 100)}
+                                            onPointerDown={(e) => handleScrollbarPointerDown('y', e)}
+                                        >
+                                            <div
+                                                class={s.panThumbY}
+                                                style={{
+                                                    top: `${vScroll().offsetPct}%`,
+                                                    height: `${vScroll().sizePct}%`,
+                                                }}
+                                            />
+                                        </div>
+                                    </Show>
                                 </div>
 
                                     <Show when={tooltipText() && tipPos()}>

@@ -453,6 +453,9 @@
     width: 100%;
     overflow: hidden;
     touch-action: pan-y;
+    overscroll-behavior: contain;
+    user-select: none;
+    -webkit-user-select: none;
     outline: none;
     border-radius: 6px;
 
@@ -469,6 +472,61 @@
 .svgPanning {
     cursor: grabbing;
     user-select: none;
+    -webkit-user-select: none;
+
+    & .svg {
+        pointer-events: none;
+    }
+}
+
+.panTrackX {
+    position: absolute;
+    left: 6px;
+    right: 16px;
+    bottom: 4px;
+    height: 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.panThumbX {
+    position: absolute;
+    top: 2px;
+    height: 6px;
+    border-radius: 999px;
+    background-color: color-mix(in srgb, var(--default-description-text) 42%, transparent);
+    transition: background-color var(--t2);
+
+    &:hover,
+    &:active {
+        background-color: color-mix(in srgb, var(--default-description-text) 72%, transparent);
+    }
+}
+
+.panTrackY {
+    position: absolute;
+    top: 6px;
+    right: 4px;
+    bottom: 16px;
+    width: 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.panThumbY {
+    position: absolute;
+    left: 2px;
+    width: 6px;
+    border-radius: 999px;
+    background-color: color-mix(in srgb, var(--default-description-text) 42%, transparent);
+    transition: background-color var(--t2);
+
+    &:hover,
+    &:active {
+        background-color: color-mix(in srgb, var(--default-description-text) 72%, transparent);
+    }
 }
 
 .svg {

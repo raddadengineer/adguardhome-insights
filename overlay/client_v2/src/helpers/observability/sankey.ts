@@ -328,11 +328,19 @@ export function layoutSankey(
 export const MIN_FLOW_ZOOM = 0.5;
 export const MAX_FLOW_ZOOM = 4;
 export const FLOW_ZOOM_STEP = 1.25;
+export const FLOW_PAN_PADDING = 48;
 
 export type FlowViewport = {
     scale: number;
     tx: number;
     ty: number;
+};
+
+export type FlowPanBounds = {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
 };
 
 export const DEFAULT_FLOW_VIEWPORT: FlowViewport = {
@@ -351,6 +359,35 @@ function clampZoomScale(rawScale: number): number {
 }
 
 /**
+ * Returns the clamped horizontal and vertical translation bounds for `scale`.
+ */
+export function getViewportPanBounds(
+    scale: number,
+    width: number,
+    height: number,
+): FlowPanBounds {
+    const safeScale = clampZoomScale(scale);
+    const safeW = Math.max(1, width);
+    const safeH = Math.max(1, height);
+
+    if (safeScale === 1) {
+        return { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+    }
+    if (safeScale < 1) {
+        const cx = (safeW * (1 - safeScale)) / 2;
+        const cy = (safeH * (1 - safeScale)) / 2;
+        return { minX: cx, maxX: cx, minY: cy, maxY: cy };
+    }
+
+    return {
+        minX: safeW * (1 - safeScale) - FLOW_PAN_PADDING,
+        maxX: FLOW_PAN_PADDING,
+        minY: safeH * (1 - safeScale) - FLOW_PAN_PADDING,
+        maxY: FLOW_PAN_PADDING,
+    };
+}
+
+/**
  * Clamps scale to [0.5, 4] and keeps the diagram centered at <=100% or within
  * bounded pan margins when zoomed in.
  */
@@ -360,27 +397,23 @@ export function clampViewport(
     height: number,
 ): FlowViewport {
     const scale = clampZoomScale(vp.scale);
-    const safeW = Math.max(1, width);
-    const safeH = Math.max(1, height);
-
     if (scale === 1) {
         return DEFAULT_FLOW_VIEWPORT;
     }
+
+    const bounds = getViewportPanBounds(scale, width, height);
     if (scale < 1) {
         return {
             scale,
-            tx: (safeW * (1 - scale)) / 2,
-            ty: (safeH * (1 - scale)) / 2,
+            tx: bounds.minX,
+            ty: bounds.minY,
         };
     }
 
-    const pad = 40;
-    const minX = safeW * (1 - scale) - pad;
-    const minY = safeH * (1 - scale) - pad;
     return {
         scale,
-        tx: Math.max(minX, Math.min(pad, vp.tx)),
-        ty: Math.max(minY, Math.min(pad, vp.ty)),
+        tx: Math.max(bounds.minX, Math.min(bounds.maxX, vp.tx)),
+        ty: Math.max(bounds.minY, Math.min(bounds.maxY, vp.ty)),
     };
 }
 

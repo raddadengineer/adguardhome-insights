@@ -14,10 +14,10 @@ index 3856be1c..39853053 100644
  │   ├── lib/                       # Theme aggregation, misc utils
  │   ├── store/types.ts             # Legacy type re-exports (post-Redux)
 diff --git a/client_v2/src/__locales/en.json b/client_v2/src/__locales/en.json
-index 394b3f38..ce288d50 100644
+index 394b3f38..4c3efdf7 100644
 --- a/client_v2/src/__locales/en.json
 +++ b/client_v2/src/__locales/en.json
-@@ -497,6 +497,175 @@
+@@ -497,6 +497,177 @@
    "nothing_found": "Nothing found",
    "notify_undo": "Undo",
    "notify_updated": "Updated",
@@ -121,6 +121,8 @@ index 394b3f38..ce288d50 100644
 +  "obs_node_aria": "Flow node %name%: %count%",
 +  "obs_open_heatmap": "Open in Heatmap",
 +  "obs_open_query_log": "Open in Query Log",
++  "obs_pan_horizontal_aria": "Horizontal diagram pan",
++  "obs_pan_vertical_aria": "Vertical diagram pan",
 +  "obs_partial_notice": "Partial data: older hours lack detailed joint or sub-hour counters, or retention is shorter than the selected window.",
 +  "obs_path_blocked": "Blocked",
 +  "obs_path_cache": "Cache",
@@ -186,7 +188,7 @@ index 394b3f38..ce288d50 100644
 +  "obs_window_90d": "90 d",
 +  "obs_window_live": "Live",
 +  "obs_zoom_controls_aria": "Diagram zoom controls",
-+  "obs_zoom_hint": "Pinch or Ctrl+scroll to zoom · Drag to pan",
++  "obs_zoom_hint": "Scroll or drag to pan · Pinch or Ctrl+scroll to zoom",
 +  "obs_zoom_in": "Zoom in",
 +  "obs_zoom_out": "Zoom out",
 +  "obs_zoom_reset": "Reset zoom",

@@ -364,6 +364,77 @@ describe('Observability pages', () => {
         expect(resetBtn).toBeDisabled();
     });
 
+    it('pans zoomed Query Flow via pointer drag, wheel scroll, and scrollbars while keeping clicks functional', async () => {
+        const dispatchPointer = (
+            target: EventTarget,
+            type: 'pointerdown' | 'pointermove' | 'pointerup',
+            init: MouseEventInit & { pointerId?: number },
+        ) => {
+            const evt = new MouseEvent(type, { bubbles: true, cancelable: true, ...init });
+            if (init.pointerId !== undefined) {
+                Object.defineProperty(evt, 'pointerId', { value: init.pointerId });
+            }
+            target.dispatchEvent(evt);
+        };
+
+        renderWithRouter(() => <FlowPage />, '/flow');
+
+        expect(screen.queryByTestId('flow-pan-x')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('flow-pan-y')).not.toBeInTheDocument();
+
+        const zoomInBtn = screen.getByRole('button', { name: copyInDom('obs_zoom_in') });
+        fireEvent.click(zoomInBtn);
+        fireEvent.click(zoomInBtn);
+        expect(screen.getByTestId('flow-zoom-level')).toHaveTextContent('156%');
+        expect(screen.getByTestId('flow-pan-x')).toBeInTheDocument();
+        expect(screen.getByTestId('flow-pan-y')).toBeInTheDocument();
+
+        const viewport = screen.getByTestId('flow-svg-viewport');
+        const zoomGroup = screen.getByTestId('flow-zoom-group');
+        const beforeDragTransform = zoomGroup.getAttribute('transform');
+
+        dispatchPointer(viewport, 'pointerdown', {
+            clientX: 100,
+            clientY: 100,
+            button: 0,
+            pointerId: 1,
+        });
+        dispatchPointer(window, 'pointermove', { clientX: 140, clientY: 120, pointerId: 1 });
+        dispatchPointer(window, 'pointerup', { clientX: 140, clientY: 120, pointerId: 1 });
+        const afterDragTransform = zoomGroup.getAttribute('transform');
+        expect(afterDragTransform).not.toBe(beforeDragTransform);
+
+        fireEvent.wheel(viewport, { deltaX: 30, deltaY: 20 });
+        const afterWheelTransform = zoomGroup.getAttribute('transform');
+        expect(afterWheelTransform).not.toBe(afterDragTransform);
+
+        fireEvent.wheel(viewport, { deltaY: 40, shiftKey: true });
+        expect(zoomGroup.getAttribute('transform')).not.toBe(afterWheelTransform);
+
+        obsMocks.fetchFlow.mockClear();
+        const clientNode = screen.getByRole('button', {
+            name: copyInDom('obs_node_aria', { name: 'Laptop', count: '100' }),
+        });
+        dispatchPointer(clientNode, 'pointerdown', {
+            clientX: 50,
+            clientY: 50,
+            button: 0,
+            pointerId: 2,
+        });
+        dispatchPointer(window, 'pointerup', { clientX: 50, clientY: 50, pointerId: 2 });
+        fireEvent.click(clientNode);
+
+        await waitFor(() => {
+            expect(obsMocks.fetchFlow).toHaveBeenCalledWith(
+                expect.objectContaining({ client: '192.168.1.10' }),
+            );
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: copyInDom('obs_zoom_reset') }));
+        expect(screen.queryByTestId('flow-pan-x')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('flow-pan-y')).not.toBeInTheDocument();
+    });
+
     it('switches to 5 min and Live windows with fast polling and pause/resume controls', async () => {
         vi.useFakeTimers();
         let unmount: (() => void) | undefined;

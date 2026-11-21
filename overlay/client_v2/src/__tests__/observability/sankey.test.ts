@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
     MIN_FLOW_ZOOM,
     MAX_FLOW_ZOOM,
+    FLOW_PAN_PADDING,
     DEFAULT_FLOW_VIEWPORT,
     foldFlow,
     layoutSankey,
+    getViewportPanBounds,
     clampViewport,
     zoomViewportAt,
     panViewport,
@@ -146,7 +148,26 @@ describe('sankey layout helpers', () => {
             DEFAULT_FLOW_VIEWPORT,
         );
         const panned = panViewport(zoomed, 400, 400, 800, 400);
-        expect(panned.tx).toBe(40);
-        expect(panned.ty).toBe(40);
+        expect(panned.tx).toBe(FLOW_PAN_PADDING);
+        expect(panned.ty).toBe(FLOW_PAN_PADDING);
+
+        expect(getViewportPanBounds(0.5, 800, 400)).toEqual({
+            minX: 200,
+            maxX: 200,
+            minY: 100,
+            maxY: 100,
+        });
+        expect(getViewportPanBounds(1, 800, 400)).toEqual({
+            minX: 0,
+            maxX: 0,
+            minY: 0,
+            maxY: 0,
+        });
+        expect(getViewportPanBounds(2, 800, 400)).toEqual({
+            minX: -800 - FLOW_PAN_PADDING,
+            maxX: FLOW_PAN_PADDING,
+            minY: -400 - FLOW_PAN_PADDING,
+            maxY: FLOW_PAN_PADDING,
+        });
     });
 });
