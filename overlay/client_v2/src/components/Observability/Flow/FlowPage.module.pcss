@@ -419,6 +419,21 @@
     min-width: 28px;
 }
 
+.panModeBtn {
+    border-inline-end: 1px solid var(--default-item-divider);
+}
+
+.zoomBtnActive {
+    background-color: var(--default-main-button);
+    color: var(--default-primary-button-text);
+
+    @media (hover: hover) {
+        &:hover:not(:disabled) {
+            background-color: var(--hovered-main-button);
+        }
+    }
+}
+
 .zoomReadout {
     min-width: 52px;
     border-inline: 1px solid var(--default-item-divider);
@@ -469,14 +484,17 @@
     touch-action: none;
 }
 
-.svgPanning {
+.svgViewport.svgHandMode,
+.svgViewport.svgHandMode * {
+    cursor: grab;
+    touch-action: none;
+}
+
+.svgViewport.svgPanning,
+.svgViewport.svgPanning * {
     cursor: grabbing;
     user-select: none;
     -webkit-user-select: none;
-
-    & .svg {
-        pointer-events: none;
-    }
 }
 
 .panTrackX {

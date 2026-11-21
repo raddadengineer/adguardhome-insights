@@ -222,15 +222,26 @@ export const FlowPage = () => {
     const [busyActionKey, setBusyActionKey] = createSignal<string | null>(null);
     const [diagramWidth, setDiagramWidth] = createSignal(780);
     const [viewport, setViewport] = createSignal<FlowViewport>(DEFAULT_FLOW_VIEWPORT);
+    const [panMode, setPanMode] = createSignal(false);
+    const [spacePanning, setSpacePanning] = createSignal(false);
     const [isPanning, setIsPanning] = createSignal(false);
     const [hoverNodeId, setHoverNodeId] = createSignal<string | null>(null);
     const [hoverLink, setHoverLink] = createSignal<PlacedLink | null>(null);
     const [tipPos, setTipPos] = createSignal<{ x: number; y: number } | null>(null);
 
+    const isHandMode = createMemo(() => panMode() || spacePanning());
+
     let wrapEl: HTMLDivElement | undefined;
     const [viewportEl, setViewportEl] = createSignal<HTMLDivElement | null>(null);
-    const activePointers = new Map<number, { x: number; y: number }>();
-    let dragState: {
+    const activeTouchPointers = new Map<number, { x: number; y: number }>();
+    let mouseDrag: {
+        startX: number;
+        startY: number;
+        origin: FlowViewport;
+        moved: boolean;
+        button: number;
+    } | null = null;
+    let touchDrag: {
         pointerId: number;
         startX: number;
         startY: number;
@@ -244,9 +255,15 @@ export const FlowPage = () => {
         origin: FlowViewport;
         moved: boolean;
     } | null = null;
+    let gestureOrigin: {
+        origin: FlowViewport;
+        anchorSvgX: number;
+        anchorSvgY: number;
+    } | null = null;
     let suppressNextClick = false;
     let suppressClickTimer: number | undefined;
-    let windowPointerAttached = false;
+    let windowMouseAttached = false;
+    let windowTouchAttached = false;
     let observer: ResizeObserver | undefined;
 
     createEffect(() => {
@@ -517,10 +534,17 @@ export const FlowPage = () => {
         flowFilter();
         showTable();
         setViewport(DEFAULT_FLOW_VIEWPORT);
+        setPanMode(false);
+        setSpacePanning(false);
         setIsPanning(false);
-        dragState = null;
+        mouseDrag = null;
+        touchDrag = null;
         pinchState = null;
-        activePointers.clear();
+        gestureOrigin = null;
+        activeTouchPointers.clear();
+        detachWindowMouseListeners();
+        detachWindowTouchListeners();
+        clearSuppressClick();
     });
 
     createEffect(() => {
@@ -572,6 +596,20 @@ export const FlowPage = () => {
         );
     };
 
+    const togglePanMode = () => {
+        if (panMode()) {
+            setPanMode(false);
+            return;
+        }
+        if (viewport().scale <= 1) {
+            zoomBy(FLOW_ZOOM_STEP);
+        }
+        setHoverNodeId(null);
+        setHoverLink(null);
+        setTipPos(null);
+        setPanMode(true);
+    };
+
     const clearSuppressClick = () => {
         if (suppressClickTimer !== undefined) {
             window.clearTimeout(suppressClickTimer);
@@ -591,33 +629,75 @@ export const FlowPage = () => {
         }, 0);
     };
 
-    const detachWindowPointerListeners = () => {
-        if (!windowPointerAttached) {
+    const detachWindowMouseListeners = () => {
+        if (!windowMouseAttached) {
             return;
         }
-        window.removeEventListener('pointermove', handleWindowPointerMove);
-        window.removeEventListener('pointerup', handleWindowPointerEnd);
-        window.removeEventListener('pointercancel', handleWindowPointerEnd);
-        windowPointerAttached = false;
+        window.removeEventListener('mousemove', handleWindowMouseMove);
+        window.removeEventListener('mouseup', handleWindowMouseUp);
+        window.removeEventListener('blur', finishMouseDrag);
+        window.removeEventListener('contextmenu', finishMouseDrag);
+        windowMouseAttached = false;
     };
 
-    const attachWindowPointerListeners = () => {
-        if (windowPointerAttached) {
+    const attachWindowMouseListeners = () => {
+        if (windowMouseAttached) {
             return;
         }
-        window.addEventListener('pointermove', handleWindowPointerMove);
-        window.addEventListener('pointerup', handleWindowPointerEnd);
-        window.addEventListener('pointercancel', handleWindowPointerEnd);
-        windowPointerAttached = true;
+        window.addEventListener('mousemove', handleWindowMouseMove);
+        window.addEventListener('mouseup', handleWindowMouseUp);
+        window.addEventListener('blur', finishMouseDrag);
+        window.addEventListener('contextmenu', finishMouseDrag);
+        windowMouseAttached = true;
+    };
+
+    const detachWindowTouchListeners = () => {
+        if (!windowTouchAttached) {
+            return;
+        }
+        window.removeEventListener('pointermove', handleWindowTouchMove);
+        window.removeEventListener('pointerup', handleWindowTouchEnd);
+        window.removeEventListener('pointercancel', handleWindowTouchEnd);
+        windowTouchAttached = false;
+    };
+
+    const attachWindowTouchListeners = () => {
+        if (windowTouchAttached) {
+            return;
+        }
+        window.addEventListener('pointermove', handleWindowTouchMove);
+        window.addEventListener('pointerup', handleWindowTouchEnd);
+        window.addEventListener('pointercancel', handleWindowTouchEnd);
+        windowTouchAttached = true;
+    };
+
+    const finishMouseDrag = () => {
+        if (!mouseDrag) {
+            return;
+        }
+        const wasMoved = mouseDrag.moved;
+        mouseDrag = null;
+        if (!touchDrag && !pinchState) {
+            setIsPanning(false);
+        }
+        detachWindowMouseListeners();
+        if (wasMoved) {
+            armSuppressClick();
+        }
     };
 
     const resetZoom = () => {
         setViewport(DEFAULT_FLOW_VIEWPORT);
+        setPanMode(false);
+        setSpacePanning(false);
         setIsPanning(false);
-        dragState = null;
+        mouseDrag = null;
+        touchDrag = null;
         pinchState = null;
-        activePointers.clear();
-        detachWindowPointerListeners();
+        gestureOrigin = null;
+        activeTouchPointers.clear();
+        detachWindowMouseListeners();
+        detachWindowTouchListeners();
         clearSuppressClick();
     };
 
@@ -670,19 +750,92 @@ export const FlowPage = () => {
         }
     };
 
-    const handleWindowPointerMove = (e: PointerEvent) => {
-        const pid = e.pointerId ?? 0;
-        if (!activePointers.has(pid)) {
+    const handleMouseDown = (e: MouseEvent) => {
+        const target = e.target as HTMLElement | null;
+        if (target?.closest('[data-pan-scrollbar="true"]')) {
             return;
         }
-        activePointers.set(pid, { x: e.clientX, y: e.clientY });
+        if (e.ctrlKey || (e.button !== 0 && e.button !== 1)) {
+            return;
+        }
+        if (viewport().scale <= 1 && !isHandMode() && e.button !== 1) {
+            return;
+        }
+
+        clearSuppressClick();
+        const immediatePan = isHandMode() || e.button === 1;
+        mouseDrag = {
+            startX: e.clientX,
+            startY: e.clientY,
+            origin: viewport(),
+            moved: immediatePan,
+            button: e.button,
+        };
+        if (immediatePan) {
+            if (e.cancelable) {
+                e.preventDefault();
+            }
+            setIsPanning(true);
+            setHoverNodeId(null);
+            setHoverLink(null);
+            setTipPos(null);
+        }
+        attachWindowMouseListeners();
+    };
+
+    const handleWindowMouseMove = (e: MouseEvent) => {
+        if (!mouseDrag) {
+            return;
+        }
+        if (e.isTrusted) {
+            const released =
+                mouseDrag.button === 1 ? (e.buttons & 4) === 0 : (e.buttons & 1) === 0;
+            if (released) {
+                finishMouseDrag();
+                return;
+            }
+        }
+
+        const dx = e.clientX - mouseDrag.startX;
+        const dy = e.clientY - mouseDrag.startY;
+        if (!mouseDrag.moved && Math.hypot(dx, dy) >= 3) {
+            mouseDrag.moved = true;
+            setIsPanning(true);
+            setHoverNodeId(null);
+            setHoverLink(null);
+            setTipPos(null);
+        }
+        if (mouseDrag.moved) {
+            if (e.cancelable) {
+                e.preventDefault();
+            }
+            const { scaleX, scaleY } = getSvgCoordScale();
+            setViewport(
+                panViewport(mouseDrag.origin, dx * scaleX, dy * scaleY, svgWidth(), diagramHeight()),
+            );
+        }
+    };
+
+    const handleWindowMouseUp = () => {
+        finishMouseDrag();
+    };
+
+    const handleWindowTouchMove = (e: PointerEvent) => {
+        if (e.pointerType === 'mouse') {
+            return;
+        }
+        const pid = e.pointerId ?? 0;
+        if (!activeTouchPointers.has(pid)) {
+            return;
+        }
+        activeTouchPointers.set(pid, { x: e.clientX, y: e.clientY });
 
         const { scaleX, scaleY, rect } = getSvgCoordScale();
         const w = svgWidth();
         const h = diagramHeight();
 
-        if (pinchState && activePointers.size >= 2) {
-            const pts = [...activePointers.values()];
+        if (pinchState && activeTouchPointers.size >= 2) {
+            const pts = [...activeTouchPointers.values()];
             const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
             const midClientX = (pts[0].x + pts[1].x) / 2;
             const midClientY = (pts[0].y + pts[1].y) / 2;
@@ -713,85 +866,68 @@ export const FlowPage = () => {
             return;
         }
 
-        if (!dragState || dragState.pointerId !== pid) {
+        if (!touchDrag || touchDrag.pointerId !== pid) {
             return;
         }
 
-        const dx = e.clientX - dragState.startX;
-        const dy = e.clientY - dragState.startY;
-        if (!dragState.moved && Math.hypot(dx, dy) > 4) {
-            dragState.moved = true;
+        const dx = e.clientX - touchDrag.startX;
+        const dy = e.clientY - touchDrag.startY;
+        if (!touchDrag.moved && Math.hypot(dx, dy) >= 3) {
+            touchDrag.moved = true;
             setIsPanning(true);
             setHoverNodeId(null);
             setHoverLink(null);
             setTipPos(null);
-            const el = viewportEl();
-            if (el?.setPointerCapture) {
-                try {
-                    el.setPointerCapture(pid);
-                } catch {
-                    // Ignore synthetic pointer ids in unit tests.
-                }
-            }
         }
-        if (dragState.moved) {
-            setViewport(panViewport(dragState.origin, dx * scaleX, dy * scaleY, w, h));
+        if (touchDrag.moved) {
+            setViewport(panViewport(touchDrag.origin, dx * scaleX, dy * scaleY, w, h));
         }
     };
 
-    const handleWindowPointerEnd = (e: PointerEvent) => {
+    const handleWindowTouchEnd = (e: PointerEvent) => {
+        if (e.pointerType === 'mouse') {
+            return;
+        }
         const pid = e.pointerId ?? 0;
-        const wasTracked = activePointers.delete(pid);
-        if (!wasTracked && !dragState && !pinchState) {
+        const wasTracked = activeTouchPointers.delete(pid);
+        if (!wasTracked && !touchDrag && !pinchState) {
             return;
         }
 
-        const wasMoved = Boolean(dragState?.moved || pinchState?.moved);
-        if (dragState?.moved) {
-            const el = viewportEl();
-            if (el?.releasePointerCapture) {
-                try {
-                    el.releasePointerCapture(dragState.pointerId);
-                } catch {
-                    // Ignore if pointer capture is not active.
-                }
-            }
-        }
+        const wasMoved = Boolean(touchDrag?.moved || pinchState?.moved);
         if (wasMoved) {
             armSuppressClick();
         }
 
-        if (activePointers.size < 2) {
+        if (activeTouchPointers.size < 2) {
             pinchState = null;
         }
-        if (!dragState || dragState.pointerId === pid || activePointers.size === 0) {
-            dragState = null;
+        if (!touchDrag || touchDrag.pointerId === pid || activeTouchPointers.size === 0) {
+            touchDrag = null;
         }
-        if (activePointers.size === 0) {
-            setIsPanning(false);
-            detachWindowPointerListeners();
+        if (activeTouchPointers.size === 0) {
+            if (!mouseDrag) {
+                setIsPanning(false);
+            }
+            detachWindowTouchListeners();
         }
     };
 
-    const handlePointerDown = (e: PointerEvent) => {
+    const handleTouchPointerDown = (e: PointerEvent) => {
+        if (!e.pointerType || e.pointerType === 'mouse') {
+            return;
+        }
         const target = e.target as HTMLElement | null;
         if (target?.closest('[data-pan-scrollbar="true"]')) {
             return;
         }
-        const btn = e.button ?? 0;
-        if (btn !== 0 && btn !== 1) {
-            return;
-        }
-        if (btn === 1 && e.cancelable) {
-            e.preventDefault();
-        }
 
         const pid = e.pointerId ?? 0;
-        activePointers.set(pid, { x: e.clientX, y: e.clientY });
-        attachWindowPointerListeners();
+        activeTouchPointers.set(pid, { x: e.clientX, y: e.clientY });
+        attachWindowTouchListeners();
 
-        if (activePointers.size === 2) {
-            const pts = [...activePointers.values()];
+        if (activeTouchPointers.size === 2) {
+            const pts = [...activeTouchPointers.values()];
             const { scaleX, scaleY, rect } = getSvgCoordScale();
             const midClientX = (pts[0].x + pts[1].x) / 2;
             const midClientY = (pts[0].y + pts[1].y) / 2;
@@ -802,7 +938,7 @@ export const FlowPage = () => {
                 origin: viewport(),
                 moved: false,
             };
-            dragState = null;
+            touchDrag = null;
             setIsPanning(true);
             setHoverNodeId(null);
             setHoverLink(null);
@@ -810,20 +946,77 @@ export const FlowPage = () => {
             return;
         }
 
-        if (activePointers.size === 1 && viewport().scale > 1) {
+        if (activeTouchPointers.size === 1 && (viewport().scale > 1 || isHandMode())) {
             clearSuppressClick();
-            dragState = {
+            touchDrag = {
                 pointerId: pid,
                 startX: e.clientX,
                 startY: e.clientY,
                 origin: viewport(),
-                moved: false,
+                moved: isHandMode(),
             };
+            if (isHandMode()) {
+                setIsPanning(true);
+            }
         }
     };
 
+    type SafariGestureEvent = UIEvent & {
+        scale?: number;
+        clientX?: number;
+        clientY?: number;
+    };
+
+    const handleGestureStart = (rawEvt: Event) => {
+        const e = rawEvt as SafariGestureEvent;
+        if (e.cancelable) {
+            e.preventDefault();
+        }
+        const w = svgWidth();
+        const h = diagramHeight();
+        const { scaleX, scaleY, rect } = getSvgCoordScale();
+        const cx = typeof e.clientX === 'number' && rect && rect.width > 0 ? (e.clientX - rect.left) * scaleX : w / 2;
+        const cy = typeof e.clientY === 'number' && rect && rect.height > 0 ? (e.clientY - rect.top) * scaleY : h / 2;
+        gestureOrigin = {
+            origin: viewport(),
+            anchorSvgX: cx,
+            anchorSvgY: cy,
+        };
+    };
+
+    const handleGestureChange = (rawEvt: Event) => {
+        const e = rawEvt as SafariGestureEvent;
+        if (e.cancelable) {
+            e.preventDefault();
+        }
+        if (!gestureOrigin || typeof e.scale !== 'number' || !Number.isFinite(e.scale)) {
+            return;
+        }
+        setViewport(
+            zoomViewportAt(
+                gestureOrigin.origin,
+                gestureOrigin.origin.scale * e.scale,
+                gestureOrigin.anchorSvgX,
+                gestureOrigin.anchorSvgY,
+                svgWidth(),
+                diagramHeight(),
+            ),
+        );
+    };
+
+    const handleGestureEnd = (rawEvt: Event) => {
+        if (rawEvt.cancelable) {
+            rawEvt.preventDefault();
+        }
+        gestureOrigin = null;
+    };
+
     const handleViewportClickCapture = (e: MouseEvent) => {
-        if (!suppressNextClick) {
+        const target = e.target as HTMLElement | null;
+        if (target?.closest('[data-pan-scrollbar="true"]')) {
+            return;
+        }
+        if (!suppressNextClick && !isHandMode()) {
             return;
         }
         e.preventDefault();
@@ -915,15 +1108,72 @@ export const FlowPage = () => {
             return;
         }
         el.addEventListener('wheel', handleWheel, { passive: false });
+        el.addEventListener('mousedown', handleMouseDown);
+        el.addEventListener('pointerdown', handleTouchPointerDown);
         el.addEventListener('click', handleViewportClickCapture, true);
+        el.addEventListener('gesturestart', handleGestureStart, { passive: false });
+        el.addEventListener('gesturechange', handleGestureChange, { passive: false });
+        el.addEventListener('gestureend', handleGestureEnd, { passive: false });
         onCleanup(() => {
             el.removeEventListener('wheel', handleWheel);
+            el.removeEventListener('mousedown', handleMouseDown);
+            el.removeEventListener('pointerdown', handleTouchPointerDown);
             el.removeEventListener('click', handleViewportClickCapture, true);
+            el.removeEventListener('gesturestart', handleGestureStart);
+            el.removeEventListener('gesturechange', handleGestureChange);
+            el.removeEventListener('gestureend', handleGestureEnd);
+        });
+    });
+
+    createEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.code !== 'Space' || e.repeat) {
+                return;
+            }
+            const t = e.target as HTMLElement | null;
+            const tag = t?.tagName;
+            const isButtonOrInput =
+                t?.isContentEditable ||
+                tag === 'INPUT' ||
+                tag === 'TEXTAREA' ||
+                tag === 'SELECT' ||
+                Boolean(t?.closest('button, a, [role="button"]'));
+            if (isButtonOrInput && t !== viewportEl()) {
+                return;
+            }
+            if (viewport().scale > 1) {
+                e.preventDefault();
+                setSpacePanning(true);
+            }
+        };
+        const onKeyUp = (e: KeyboardEvent) => {
+            if (e.code === 'Space') {
+                setSpacePanning(false);
+            }
+        };
+        const onWindowBlur = () => {
+            setSpacePanning(false);
+            finishMouseDrag();
+            activeTouchPointers.clear();
+            touchDrag = null;
+            pinchState = null;
+            gestureOrigin = null;
+            setIsPanning(false);
+            detachWindowTouchListeners();
+        };
+        window.addEventListener('keydown', onKeyDown);
+        window.addEventListener('keyup', onKeyUp);
+        window.addEventListener('blur', onWindowBlur);
+        onCleanup(() => {
+            window.removeEventListener('keydown', onKeyDown);
+            window.removeEventListener('keyup', onKeyUp);
+            window.removeEventListener('blur', onWindowBlur);
         });
     });
 
     onCleanup(() => {
-        detachWindowPointerListeners();
+        detachWindowMouseListeners();
+        detachWindowTouchListeners();
         clearSuppressClick();
     });
 
@@ -1232,7 +1482,7 @@ export const FlowPage = () => {
     };
 
     const updateTip = (e: MouseEvent) => {
-        if (isPanning() || !wrapEl) return;
+        if (isPanning() || isHandMode() || !wrapEl) return;
         const rect = wrapEl.getBoundingClientRect();
         setTipPos({
             x: Math.min(rect.width - 260, Math.max(8, e.clientX - rect.left + 12)),
@@ -1811,6 +2061,18 @@ export const FlowPage = () => {
                                     >
                                         <button
                                             type="button"
+                                            class={cn(s.zoomBtn, s.panModeBtn, {
+                                                [s.zoomBtnActive]: isHandMode(),
+                                            })}
+                                            aria-label={intl.getMessage('obs_pan_mode_aria')}
+                                            aria-pressed={isHandMode()}
+                                            data-testid="flow-pan-mode"
+                                            onClick={togglePanMode}
+                                        >
+                                            {intl.getMessage('obs_pan_mode')}
+                                        </button>
+                                        <button
+                                            type="button"
                                             class={s.zoomBtn}
                                             aria-label={intl.getMessage('obs_zoom_out')}
                                             disabled={viewport().scale <= MIN_FLOW_ZOOM}
@@ -1903,11 +2165,11 @@ export const FlowPage = () => {
                                         ref={setViewportEl}
                                         class={cn(s.svgViewport, {
                                             [s.svgPannable]: viewport().scale > 1,
+                                            [s.svgHandMode]: isHandMode(),
                                             [s.svgPanning]: isPanning(),
                                         })}
                                         tabIndex={0}
                                         data-testid="flow-svg-viewport"
-                                        onPointerDown={handlePointerDown}
                                         onDragStart={(e) => e.preventDefault()}
                                         onKeyDown={handleViewportKeyDown}
                                     >
@@ -1973,14 +2235,14 @@ export const FlowPage = () => {
                                                                 }
                                                             }}
                                                             onMouseEnter={(e) => {
-                                                                if (isPanning()) return;
+                                                                if (isPanning() || isHandMode()) return;
                                                                 setHoverLink(link);
                                                                 setHoverNodeId(null);
                                                                 updateTip(e);
                                                             }}
                                                             onMouseMove={updateTip}
                                                             onMouseLeave={() => {
-                                                                if (isPanning()) return;
+                                                                if (isPanning() || isHandMode()) return;
                                                                 setHoverLink(null);
                                                                 setTipPos(null);
                                                             }}
@@ -2038,14 +2300,14 @@ export const FlowPage = () => {
                                                                 }
                                                             }}
                                                             onMouseEnter={(e) => {
-                                                                if (isPanning()) return;
+                                                                if (isPanning() || isHandMode()) return;
                                                                 setHoverNodeId(node.id);
                                                                 setHoverLink(null);
                                                                 updateTip(e);
                                                             }}
                                                             onMouseMove={updateTip}
                                                             onMouseLeave={() => {
-                                                                if (isPanning()) return;
+                                                                if (isPanning() || isHandMode()) return;
                                                                 setHoverNodeId(null);
                                                                 setTipPos(null);
                                                             }}

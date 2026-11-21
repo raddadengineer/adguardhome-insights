@@ -364,45 +364,57 @@ describe('Observability pages', () => {
         expect(resetBtn).toBeDisabled();
     });
 
-    it('pans zoomed Query Flow via pointer drag, wheel scroll, and scrollbars while keeping clicks functional', async () => {
-        const dispatchPointer = (
-            target: EventTarget,
-            type: 'pointerdown' | 'pointermove' | 'pointerup',
-            init: MouseEventInit & { pointerId?: number },
-        ) => {
-            const evt = new MouseEvent(type, { bubbles: true, cancelable: true, ...init });
-            if (init.pointerId !== undefined) {
-                Object.defineProperty(evt, 'pointerId', { value: init.pointerId });
-            }
-            target.dispatchEvent(evt);
-        };
-
+    it('pans zoomed Query Flow via mouse drag, Pan mode toggle, wheel scroll, and scrollbars while keeping clicks functional', async () => {
         renderWithRouter(() => <FlowPage />, '/flow');
 
         expect(screen.queryByTestId('flow-pan-x')).not.toBeInTheDocument();
         expect(screen.queryByTestId('flow-pan-y')).not.toBeInTheDocument();
 
-        const zoomInBtn = screen.getByRole('button', { name: copyInDom('obs_zoom_in') });
-        fireEvent.click(zoomInBtn);
-        fireEvent.click(zoomInBtn);
-        expect(screen.getByTestId('flow-zoom-level')).toHaveTextContent('156%');
+        const panModeBtn = screen.getByTestId('flow-pan-mode');
+        expect(panModeBtn).toHaveAttribute('aria-pressed', 'false');
+
+        // Turning Pan mode on at 100% automatically zooms to 125% for immediate grab & pan.
+        fireEvent.click(panModeBtn);
+        expect(panModeBtn).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByTestId('flow-zoom-level')).toHaveTextContent('125%');
         expect(screen.getByTestId('flow-pan-x')).toBeInTheDocument();
         expect(screen.getByTestId('flow-pan-y')).toBeInTheDocument();
 
         const viewport = screen.getByTestId('flow-svg-viewport');
         const zoomGroup = screen.getByTestId('flow-zoom-group');
-        const beforeDragTransform = zoomGroup.getAttribute('transform');
-
-        dispatchPointer(viewport, 'pointerdown', {
-            clientX: 100,
-            clientY: 100,
-            button: 0,
-            pointerId: 1,
+        const clientNode = screen.getByRole('button', {
+            name: copyInDom('obs_node_aria', { name: 'Laptop', count: '100' }),
         });
-        dispatchPointer(window, 'pointermove', { clientX: 140, clientY: 120, pointerId: 1 });
-        dispatchPointer(window, 'pointerup', { clientX: 140, clientY: 120, pointerId: 1 });
+
+        // Clicking a node in Pan mode does not trigger accidental drill-down.
+        obsMocks.fetchFlow.mockClear();
+        fireEvent.click(clientNode);
+        expect(obsMocks.fetchFlow).not.toHaveBeenCalled();
+
+        // Dragging on a node in Pan mode pans smoothly.
+        const beforePanModeDrag = zoomGroup.getAttribute('transform');
+        fireEvent.mouseDown(clientNode, { clientX: 120, clientY: 120, button: 0 });
+        fireEvent.mouseMove(window, { clientX: 170, clientY: 145 });
+        fireEvent.mouseUp(window, { clientX: 170, clientY: 145 });
+        const afterPanModeDrag = zoomGroup.getAttribute('transform');
+        expect(afterPanModeDrag).not.toBe(beforePanModeDrag);
+
+        // Turn Pan mode off and zoom in again; dragging on a node still pans and suppresses click.
+        fireEvent.click(panModeBtn);
+        expect(panModeBtn).toHaveAttribute('aria-pressed', 'false');
+        const zoomInBtn = screen.getByRole('button', { name: copyInDom('obs_zoom_in') });
+        fireEvent.click(zoomInBtn);
+        expect(screen.getByTestId('flow-zoom-level')).toHaveTextContent('156%');
+
+        const beforeNodeDrag = zoomGroup.getAttribute('transform');
+        obsMocks.fetchFlow.mockClear();
+        fireEvent.mouseDown(clientNode, { clientX: 100, clientY: 100, button: 0 });
+        fireEvent.mouseMove(window, { clientX: 140, clientY: 120 });
+        fireEvent.mouseUp(window, { clientX: 140, clientY: 120 });
+        fireEvent.click(clientNode);
         const afterDragTransform = zoomGroup.getAttribute('transform');
-        expect(afterDragTransform).not.toBe(beforeDragTransform);
+        expect(afterDragTransform).not.toBe(beforeNodeDrag);
+        expect(obsMocks.fetchFlow).not.toHaveBeenCalled();
 
         fireEvent.wheel(viewport, { deltaX: 30, deltaY: 20 });
         const afterWheelTransform = zoomGroup.getAttribute('transform');
@@ -411,17 +423,10 @@ describe('Observability pages', () => {
         fireEvent.wheel(viewport, { deltaY: 40, shiftKey: true });
         expect(zoomGroup.getAttribute('transform')).not.toBe(afterWheelTransform);
 
+        // Simple click without drag on a node still drills down while zoomed in.
         obsMocks.fetchFlow.mockClear();
-        const clientNode = screen.getByRole('button', {
-            name: copyInDom('obs_node_aria', { name: 'Laptop', count: '100' }),
-        });
-        dispatchPointer(clientNode, 'pointerdown', {
-            clientX: 50,
-            clientY: 50,
-            button: 0,
-            pointerId: 2,
-        });
-        dispatchPointer(window, 'pointerup', { clientX: 50, clientY: 50, pointerId: 2 });
+        fireEvent.mouseDown(clientNode, { clientX: 50, clientY: 50, button: 0 });
+        fireEvent.mouseUp(window, { clientX: 50, clientY: 50 });
         fireEvent.click(clientNode);
 
         await waitFor(() => {
