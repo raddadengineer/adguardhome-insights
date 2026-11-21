@@ -364,6 +364,63 @@ describe('Observability pages', () => {
         expect(resetBtn).toBeDisabled();
     });
 
+    it('switches to 5 min and Live windows with fast polling and pause/resume controls', async () => {
+        vi.useFakeTimers();
+        let unmount: (() => void) | undefined;
+        try {
+            ({ unmount } = renderWithRouter(() => <FlowPage />, '/flow'));
+
+            fireEvent.click(screen.getByRole('button', { name: copyInDom('obs_window_5m') }));
+            await vi.advanceTimersByTimeAsync(0);
+            expect(obsMocks.fetchFlow).toHaveBeenLastCalledWith(
+                expect.objectContaining({ window: '5m' }),
+            );
+
+            fireEvent.click(screen.getByRole('button', { name: copyInDom('obs_window_live') }));
+            await vi.advanceTimersByTimeAsync(0);
+            expect(obsMocks.fetchFlow).toHaveBeenLastCalledWith(
+                expect.objectContaining({ window: 'live' }),
+            );
+            expect(screen.getByTestId('flow-live-badge')).toHaveTextContent(
+                copyInDom('obs_live_status_streaming'),
+            );
+
+            obsMocks.fetchFlow.mockClear();
+            await vi.advanceTimersByTimeAsync(3_000);
+            expect(obsMocks.fetchFlow).toHaveBeenCalledWith(
+                expect.objectContaining({ window: 'live' }),
+                true,
+            );
+
+            fireEvent.click(screen.getByRole('button', { name: copyInDom('obs_live_pause') }));
+            await vi.advanceTimersByTimeAsync(0);
+            expect(screen.getByTestId('flow-live-badge')).toHaveTextContent(
+                copyInDom('obs_live_status_paused'),
+            );
+
+            obsMocks.fetchFlow.mockClear();
+            await vi.advanceTimersByTimeAsync(6_000);
+            expect(obsMocks.fetchFlow).not.toHaveBeenCalled();
+
+            fireEvent.click(screen.getByRole('button', { name: copyInDom('obs_live_resume') }));
+            await vi.advanceTimersByTimeAsync(0);
+            expect(obsMocks.fetchFlow).toHaveBeenCalledWith(
+                expect.objectContaining({ window: 'live' }),
+                true,
+            );
+
+            obsMocks.fetchFlow.mockClear();
+            await vi.advanceTimersByTimeAsync(3_000);
+            expect(obsMocks.fetchFlow).toHaveBeenCalledWith(
+                expect.objectContaining({ window: 'live' }),
+                true,
+            );
+        } finally {
+            unmount?.();
+            vi.useRealTimers();
+        }
+    });
+
     it('renders TrafficMapPage service tiles and toggles table view', () => {
         renderWithRouter(() => <TrafficMapPage />, '/traffic_map');
         expect(

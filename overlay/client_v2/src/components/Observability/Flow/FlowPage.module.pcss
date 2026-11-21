@@ -78,6 +78,12 @@
     }
 }
 
+.segLiveBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
 .segActive {
     background-color: var(--default-main-button);
     color: var(--default-primary-button-text);
@@ -86,6 +92,63 @@
         &:hover {
             background-color: var(--hovered-main-button);
         }
+    }
+}
+
+.liveBadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-text-t4);
+    font-weight: var(--weight-medium);
+    padding: 4px 10px;
+    border-radius: 999px;
+    background-color: color-mix(in srgb, var(--obs-cached) 16%, transparent);
+    color: var(--obs-cached);
+}
+
+.liveBadgePaused {
+    background-color: var(--page-background-additional);
+    color: var(--default-description-text);
+}
+
+.liveDot,
+.liveBtnDot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background-color: var(--obs-cached);
+}
+
+.liveBadgePaused .liveDot {
+    background-color: var(--default-description-text);
+}
+
+.segActive .liveBtnDot {
+    background-color: currentColor;
+}
+
+.liveDotActive {
+    animation: obsLivePulse 1.6s ease-in-out infinite;
+}
+
+@keyframes obsLivePulse {
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.4;
+        transform: scale(0.8);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .liveDotActive {
+        animation: none;
     }
 }
 

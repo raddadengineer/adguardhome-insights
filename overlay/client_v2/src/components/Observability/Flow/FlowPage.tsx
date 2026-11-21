@@ -91,10 +91,22 @@ import { FlowTreePanel } from './blocks/FlowTreePanel';
 
 import s from './FlowPage.module.pcss';
 
-const WINDOWS: readonly StatsFlowWindow[] = ['15m', '1h', '6h', '24h', '7d', '30d', '90d'];
+const WINDOWS: readonly StatsFlowWindow[] = [
+    'live',
+    '5m',
+    '15m',
+    '1h',
+    '6h',
+    '24h',
+    '7d',
+    '30d',
+    '90d',
+];
 const GROUP_BYS: readonly StatsFlowGroupBy[] = ['client', 'tag', 'protocol'];
 const VIEW_LENSES: readonly StatsFlowView[] = ['auto', 'overview', 'blocked', 'content', 'dns'];
 const MIN_FOLD_SHARE = 0.005;
+const LIVE_POLL_INTERVAL_MS = 3_000;
+const AUTO_REFRESH_INTERVAL_MS = 15_000;
 
 type InspectorTab = 'hierarchy' | 'domains' | 'services' | 'devices' | 'recent';
 
@@ -200,7 +212,8 @@ export const FlowPage = () => {
 
     const [clientDraft, setClientDraft] = createSignal(untrack(activeClient));
     const [hideSmall, setHideSmall] = createSignal(true);
-    const [live, setLive] = createSignal(false);
+    const [autoRefresh, setAutoRefresh] = createSignal(false);
+    const [livePaused, setLivePaused] = createSignal(false);
     const [showTable, setShowTable] = createSignal(false);
     const [inspectAll, setInspectAll] = createSignal(false);
     const [inspectorTab, setInspectorTab] = createSignal<InspectorTab>('hierarchy');
@@ -301,36 +314,71 @@ export const FlowPage = () => {
         limit: 100,
     });
 
-    createEffect(() => {
-        const w = win();
-        const gb = groupBy();
-        const vw = viewLens();
-        const flt = flowFilter();
-        const shouldInspect = hasFilter() || inspectAll();
-        const isLive = live();
+    const isLiveWindow = createMemo(() => win() === 'live');
+    const isPolling = createMemo(() => (isLiveWindow() ? !livePaused() : autoRefresh()));
+    const pollIntervalMs = createMemo(() =>
+        isLiveWindow() ? LIVE_POLL_INTERVAL_MS : AUTO_REFRESH_INTERVAL_MS,
+    );
+    const shouldInspect = createMemo(() => hasFilter() || inspectAll());
+    const flowRequest = createMemo(() =>
+        buildFlowRequest(win(), groupBy(), viewLens(), flowFilter()),
+    );
+    const detailsRequest = createMemo(() =>
+        buildDetailsRequest(win(), viewLens(), flowFilter()),
+    );
 
-        const flowReq = buildFlowRequest(w, gb, vw, flt);
-        const detailsReq = buildDetailsRequest(w, vw, flt);
+    createEffect(() => {
+        if (isLiveWindow()) {
+            setLivePaused(false);
+        }
+    });
+
+    createEffect(() => {
+        const flowReq = flowRequest();
+        const detailsReq = detailsRequest();
+        const inspect = shouldInspect();
 
         void fetchFlow(flowReq);
-        if (shouldInspect) {
+        if (inspect) {
             void fetchFlowDetails(detailsReq);
         } else {
             clearFlowDetails();
         }
+    });
 
-        if (!isLive) {
+    createEffect(() => {
+        if (!isPolling()) {
             return;
         }
 
-        const timer = window.setInterval(() => {
-            void fetchFlow(flowReq, true);
-            if (shouldInspect) {
-                void fetchFlowDetails(detailsReq, true);
-            }
-        }, 15_000);
+        const flowReq = flowRequest();
+        const detailsReq = detailsRequest();
+        const inspect = shouldInspect();
+        const intervalMs = pollIntervalMs();
 
+        let cancelled = false;
+        let inFlight = false;
+
+        const tick = () => {
+            if (cancelled || inFlight) {
+                return;
+            }
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+                return;
+            }
+            inFlight = true;
+            const reqs: Promise<unknown>[] = [fetchFlow(flowReq, true)];
+            if (inspect) {
+                reqs.push(fetchFlowDetails(detailsReq, true));
+            }
+            void Promise.allSettled(reqs).finally(() => {
+                inFlight = false;
+            });
+        };
+
+        const timer = window.setInterval(tick, intervalMs);
         onCleanup(() => {
+            cancelled = true;
             window.clearInterval(timer);
         });
     });
@@ -672,6 +720,10 @@ export const FlowPage = () => {
 
     const windowLabel = (w: StatsFlowWindow): string => {
         switch (w) {
+            case 'live':
+                return intl.getMessage('obs_window_live');
+            case '5m':
+                return intl.getMessage('obs_window_5m');
             case '15m':
                 return intl.getMessage('obs_window_15m');
             case '1h':
@@ -1036,6 +1088,20 @@ export const FlowPage = () => {
                             <h1 class={cn(theme.title.h4, theme.title.h3_tablet, s.title)}>
                                 {intl.getMessage('obs_flow_title')}
                             </h1>
+                            <Show when={isLiveWindow()}>
+                                <span
+                                    class={cn(s.liveBadge, { [s.liveBadgePaused]: livePaused() })}
+                                    data-testid="flow-live-badge"
+                                >
+                                    <span
+                                        class={cn(s.liveDot, { [s.liveDotActive]: !livePaused() })}
+                                        aria-hidden="true"
+                                    />
+                                    {livePaused()
+                                        ? intl.getMessage('obs_live_status_paused')
+                                        : intl.getMessage('obs_live_status_streaming')}
+                                </span>
+                            </Show>
                             <Show when={totalQueries() > 0}>
                                 <span class={s.totalBadge}>
                                     {intl.getMessage('obs_total_queries')}:{' '}
@@ -1051,9 +1117,22 @@ export const FlowPage = () => {
                                 {(w) => (
                                     <button
                                         type="button"
-                                        class={cn(s.segBtn, { [s.segActive]: win() === w })}
+                                        class={cn(s.segBtn, {
+                                            [s.segActive]: win() === w,
+                                            [s.segLiveBtn]: w === 'live',
+                                        })}
+                                        aria-pressed={win() === w}
                                         onClick={() => setSearchParams({ window: w }, { replace: true })}
                                     >
+                                        <Show when={w === 'live'}>
+                                            <span
+                                                class={cn(s.liveBtnDot, {
+                                                    [s.liveDotActive]:
+                                                        win() === 'live' && !livePaused(),
+                                                })}
+                                                aria-hidden="true"
+                                            />
+                                        </Show>
                                         {windowLabel(w)}
                                     </button>
                                 )}
@@ -1133,14 +1212,41 @@ export const FlowPage = () => {
                             >
                                 {intl.getMessage('obs_fold_small')}
                             </button>
-                            <button
-                                type="button"
-                                class={cn(s.toggleBtn, { [s.segActive]: live() })}
-                                aria-label={intl.getMessage('obs_live_aria')}
-                                onClick={() => setLive((prev) => !prev)}
+                            <Show
+                                when={isLiveWindow()}
+                                fallback={
+                                    <button
+                                        type="button"
+                                        class={cn(s.toggleBtn, { [s.segActive]: autoRefresh() })}
+                                        aria-label={intl.getMessage('obs_live_aria')}
+                                        aria-pressed={autoRefresh()}
+                                        onClick={() => setAutoRefresh((prev) => !prev)}
+                                    >
+                                        {intl.getMessage('obs_auto_refresh')}
+                                    </button>
+                                }
                             >
-                                {intl.getMessage('obs_live')}
-                            </button>
+                                <button
+                                    type="button"
+                                    class={cn(s.toggleBtn, { [s.segActive]: !livePaused() })}
+                                    aria-pressed={!livePaused()}
+                                    onClick={() => {
+                                        if (livePaused()) {
+                                            setLivePaused(false);
+                                            void fetchFlow(flowRequest(), true);
+                                            if (shouldInspect()) {
+                                                void fetchFlowDetails(detailsRequest(), true);
+                                            }
+                                            return;
+                                        }
+                                        setLivePaused(true);
+                                    }}
+                                >
+                                    {livePaused()
+                                        ? intl.getMessage('obs_live_resume')
+                                        : intl.getMessage('obs_live_pause')}
+                                </button>
+                            </Show>
                             <button
                                 type="button"
                                 class={cn(s.toggleBtn, { [s.segActive]: showTable() })}

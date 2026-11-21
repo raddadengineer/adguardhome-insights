@@ -725,3 +725,87 @@ func TestObservability_ConcurrentRaces(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestObservability_FlowShortWindows(t *testing.T) {
+	now := time.Now().UTC()
+	curID := uint32(now.Unix() / 3600)
+
+	scanner := &mockScanner{
+		entries: []QueryLogEntry{
+			{
+				Time:       now.Add(-30 * time.Second),
+				Domain:     "live.example.com",
+				Client:     "192.168.1.50",
+				ClientName: "Phone",
+				Status:     "forwarded",
+				Upstream:   "1.1.1.1:53",
+				Rcode:      "NOERROR",
+			},
+			{
+				Time:       now.Add(-3 * time.Minute),
+				Domain:     "five.example.com",
+				Client:     "192.168.1.50",
+				ClientName: "Phone",
+				Status:     "cached",
+				Rcode:      "NOERROR",
+			},
+			{
+				Time:       now.Add(-10 * time.Minute),
+				Domain:     "fifteen.example.com",
+				Client:     "192.168.1.60",
+				ClientName: "Laptop",
+				Status:     "blocked",
+				Rcode:      "NOERROR",
+				Blocked:    true,
+			},
+		},
+	}
+
+	s := newTestStatsCtx(t, Config{
+		Enabled:         true,
+		Limit:           timeutil.Day,
+		UnitID:          func() uint32 { return curID },
+		QueryLogScanner: scanner,
+	})
+	s.Start()
+	testutil.CleanupAndRequireSuccess(t, s.Close)
+
+	for _, tc := range []struct {
+		name      string
+		window    string
+		wantTotal uint64
+	}{
+		{name: "live", window: "live", wantTotal: 1},
+		{name: "5m", window: "5m", wantTotal: 2},
+		{name: "15m", window: "15m", wantTotal: 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rw := httptest.NewRecorder()
+			req := httptest.NewRequest(
+				http.MethodGet,
+				fmt.Sprintf("/control/stats/flow?window=%s&group_by=client", tc.window),
+				nil,
+			)
+			s.handleStatsFlow(rw, req)
+			require.Equal(t, http.StatusOK, rw.Code)
+
+			var flowResp StatsFlowResp
+			require.NoError(t, json.Unmarshal(rw.Body.Bytes(), &flowResp))
+			assert.Equal(t, "querylog", flowResp.Source)
+			assert.Equal(t, tc.wantTotal, flowResp.Total)
+
+			detailsRW := httptest.NewRecorder()
+			detailsReq := httptest.NewRequest(
+				http.MethodGet,
+				fmt.Sprintf("/control/stats/flow/details?window=%s", tc.window),
+				nil,
+			)
+			s.handleStatsFlowDetails(detailsRW, detailsReq)
+			require.Equal(t, http.StatusOK, detailsRW.Code)
+
+			var detailsResp StatsFlowDetailsResp
+			require.NoError(t, json.Unmarshal(detailsRW.Body.Bytes(), &detailsResp))
+			assert.Equal(t, tc.wantTotal, detailsResp.Total)
+		})
+	}
+}

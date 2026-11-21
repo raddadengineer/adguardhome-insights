@@ -196,6 +196,10 @@ type StatsLatencyExemplarsResp struct {
 
 func parseFlowWindow(window string) (time.Duration, error) {
 	switch window {
+	case "live":
+		return time.Minute, nil
+	case "5m":
+		return 5 * time.Minute, nil
 	case "15m":
 		return 15 * time.Minute, nil
 	case "1h":

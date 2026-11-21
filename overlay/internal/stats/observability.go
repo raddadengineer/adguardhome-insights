@@ -831,7 +831,7 @@ func (s *StatsCtx) buildFlow(
 	}
 
 	isDefaultOverview := slices.Equal(stages, []string{"group", "status", "upstream", "rcode"})
-	useQueryLog := !filter.isEmpty() || !isDefaultOverview || (window == "15m" && s.queryLogScanner != nil)
+	useQueryLog := !filter.isEmpty() || !isDefaultOverview || (dur < time.Hour && s.queryLogScanner != nil)
 	if useQueryLog {
 		resp.Source = "querylog"
 		if s.queryLogScanner == nil {
